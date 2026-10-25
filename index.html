@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f4e79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Einkauf">
+  <title>Einkaufsliste</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="title">Einkaufsliste</h1>
+    <span id="status" class="status" title="Verbindung"></span>
+  </header>
+
+  <main id="app"></main>
+
+  <div id="toast" class="toast" hidden>
+    <span id="toast-text"></span>
+    <button id="toast-action" type="button"></button>
+  </div>
+
+  <dialog id="dlg" class="dlg"></dialog>
+
+  <nav class="tabbar">
+    <a href="#/" data-route="/"><span class="ico">🛒</span>Offen <b id="count-open" class="badge"></b></a>
+    <a href="#/erledigt" data-route="/erledigt"><span class="ico">✅</span>Erledigt</a>
+    <a href="#/einstellungen" data-route="/einstellungen"><span class="ico">⚙</span>Einstellungen</a>
+  </nav>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
