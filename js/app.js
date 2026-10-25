@@ -312,22 +312,29 @@ async function edit(it) {
   ));
   if (res === 'save' && artikel.value.trim()) {
     store.update(it.id, { artikel: artikel.value.trim(), menge: menge.value.trim() }).catch(fail);
-  } else if (res === 'delete') {
+  } else if (res === 'delete' && await confirmDelete(`„${it.artikel}“ löschen?`, 'Der Eintrag wird für alle aus der Liste entfernt.')) {
     store.remove(it.id).catch(fail);
     toast(`„${it.artikel}“ gelöscht`);
   }
 }
 
+// Sicherheitsabfrage vor jedem Löschen; "Abbrechen" steht vorne und hat den Fokus.
+async function confirmDelete(title, text) {
+  const res = await dialog((f) => f.append(
+    el('h2', {}, title),
+    el('p', {}, text),
+    el('div', { class: 'row' },
+      el('button', { class: 'btn secondary', value: '', autofocus: true }, 'Abbrechen'),
+      el('button', { class: 'btn danger', value: 'ok' }, 'Ja, löschen')),
+  ));
+  return res === 'ok';
+}
+
 async function clearDone() {
   const done = items.filter((i) => i.erledigt);
-  const res = await dialog((f) => f.append(
-    el('h2', {}, 'Erledigte löschen?'),
-    el('p', {}, `${done.length} gekaufte Artikel werden für alle aus der Liste entfernt.`),
-    el('div', { class: 'row' },
-      el('button', { class: 'btn secondary', value: '' }, 'Abbrechen'),
-      el('button', { class: 'btn danger', value: 'ok' }, 'Löschen')),
-  ));
-  if (res === 'ok') store.removeMany(done.map((i) => i.id)).catch(fail);
+  if (await confirmDelete('Erledigte löschen?', `${done.length} gekaufte Artikel werden für alle aus der Liste entfernt.`)) {
+    store.removeMany(done.map((i) => i.id)).catch(fail);
+  }
 }
 
 // ---------- Start ----------
