@@ -11,13 +11,14 @@ service cloud.firestore {
         && d.erledigtVon is string && d.erledigtVon.size() <= 30;
     }
 
-    // Nur die App (anonym angemeldet) darf lesen und schreiben.
-    match /items/{id} {
-      allow read, delete: if request.auth != null;
-      allow create: if request.auth != null
+    // Jede Familie hat einen geheimen Code. Zugriff nur, wer ihn kennt:
+    // Für "listen" selbst gibt es keine Regel, also kann niemand die Codes auflisten.
+    match /listen/{code}/items/{id} {
+      allow read, delete: if request.auth != null && code.size() >= 20;
+      allow create: if request.auth != null && code.size() >= 20
         && validItem(request.resource.data)
         && request.resource.data.erstelltAm == request.time;
-      allow update: if request.auth != null
+      allow update: if request.auth != null && code.size() >= 20
         && validItem(request.resource.data)
         && request.resource.data.erstelltAm == resource.data.erstelltAm;
     }

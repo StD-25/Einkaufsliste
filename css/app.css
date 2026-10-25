@@ -30,6 +30,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 html, body { margin: 0; height: 100%; }
 
@@ -173,6 +174,10 @@ input[type="text"]:focus { outline: 2px solid var(--blue); outline-offset: 1px; 
 .card h2 { margin: 0; font-size: 1.05rem; }
 .card p { margin: 0; color: var(--muted); font-size: 0.9rem; }
 label { font-size: 0.85rem; color: var(--muted); }
+.card .error { color: var(--danger); }
+.row-buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row-buttons p { flex-basis: 100%; }
+#invite-link { font-size: 0.85rem; }
 
 /* Tabbar */
 .tabbar {

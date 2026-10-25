@@ -2,6 +2,9 @@
 // Mit Firebase-Konfiguration: Firestore (live für alle, offline-fähig).
 // Ohne: Demo-Modus in localStorage, synchronisiert nur zwischen Tabs dieses Geräts.
 //
+// Jede Familie hat einen geheimen Code; die Einträge liegen unter listen/<code>/items.
+// Ohne Code lässt sich die Liste weder finden noch lesen (siehe firestore.rules).
+//
 // Einheitliche Schnittstelle:
 //   subscribe(cb, onError) -> unsubscribe   cb(items[])
 //   add({artikel, menge, name}), update(id, patch), remove(id), removeMany(ids)
@@ -14,11 +17,19 @@ const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 
 export const isDemo = !firebaseConfig.apiKey;
 
-export async function createStore() {
-  return isDemo ? createDemoStore() : createFirestoreStore();
+// 24 Zeichen aus 57 Buchstaben/Ziffern (ohne 0/O, 1/l/I) ≈ 140 Bit Zufall.
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+export function newCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join('');
+}
+export const isValidCode = (c) => typeof c === 'string' && /^[A-Za-z0-9]{20,64}$/.test(c);
+
+export async function createStore(code) {
+  return isDemo ? createDemoStore() : createFirestoreStore(code);
 }
 
-async function createFirestoreStore() {
+async function createFirestoreStore(code) {
   const [{ initializeApp }, auth, fs] = await Promise.all([
     import(`${SDK}/firebase-app.js`),
     import(`${SDK}/firebase-auth.js`),
@@ -35,7 +46,7 @@ async function createFirestoreStore() {
   await a.authStateReady();
   if (!a.currentUser) await auth.signInAnonymously(a);
 
-  const col = fs.collection(db, 'items');
+  const col = fs.collection(db, 'listen', code, 'items');
   const toDate = (t) => (t && typeof t.toDate === 'function' ? t.toDate() : null);
 
   return {

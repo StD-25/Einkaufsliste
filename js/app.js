@@ -1,6 +1,7 @@
-import { createStore, isDemo } from './store.js';
+import { createStore, isDemo, newCode, isValidCode } from './store.js';
 
 const NAME_KEY = 'einkaufsliste-name';
+const CODE_KEY = 'einkaufsliste-code';
 const $ = (sel) => document.querySelector(sel);
 const app = $('#app');
 
@@ -27,6 +28,26 @@ function getName() {
 }
 function setName(v) {
   try { localStorage.setItem(NAME_KEY, v); } catch { /* ignorieren */ }
+}
+
+function getCode() {
+  try { return localStorage.getItem(CODE_KEY) || ''; } catch { return ''; }
+}
+function setCode(v) {
+  try { localStorage.setItem(CODE_KEY, v); } catch { /* ignorieren */ }
+}
+const needsCode = () => !isDemo && !getCode();
+
+function inviteLink() {
+  return `${location.origin}${location.pathname}?liste=${getCode()}`;
+}
+
+// Code aus einem eingefügten Einladungslink oder direkt eingegeben.
+function parseCode(text) {
+  const t = text.trim();
+  const m = t.match(/liste=([A-Za-z0-9]+)/);
+  const c = m ? m[1] : t;
+  return isValidCode(c) ? c : '';
 }
 
 const WT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -123,7 +144,8 @@ function itemRow(it) {
 function notices() {
   const out = [];
   if (isDemo) out.push(el('div', { class: 'notice' }, 'Demo-Modus: Firebase ist noch nicht eingerichtet. Einträge bleiben nur auf diesem Gerät. Anleitung im README.'));
-  if (loadError) out.push(el('div', { class: 'notice' }, `Verbindung zur Liste fehlgeschlagen: ${loadError}`));
+  if (loadError === 'permission-denied') out.push(el('div', { class: 'notice' }, 'Kein Zugriff auf die Liste. Bitte den Einladungslink noch einmal öffnen.'));
+  else if (loadError) out.push(el('div', { class: 'notice' }, `Verbindung zur Liste fehlgeschlagen: ${loadError}`));
   return out;
 }
 
@@ -172,9 +194,61 @@ function viewDone() {
   };
 }
 
+function viewJoin() {
+  renderList = () => {};
+  const input = el('input', { type: 'text', id: 'join-code', placeholder: 'Einladungslink oder Code', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  const err = el('p', { class: 'error', hidden: true }, 'Das ist kein gültiger Einladungslink. Bitte den ganzen Link aus der Einladung einfügen.');
+  const confirmNew = el('div', { class: 'row-buttons', hidden: true },
+    el('p', {}, 'Das wird eine eigene, leere Liste. Wurdest du eingeladen, öffne lieber den Link.'),
+    el('button', { class: 'btn secondary', type: 'button', onclick: () => { confirmNew.hidden = true; } }, 'Abbrechen'),
+    el('button', { class: 'btn', type: 'button', onclick: () => join(newCode()) }, 'Ja, neue Liste anlegen'));
+  app.replaceChildren(
+    el('form', {
+      class: 'card',
+      onsubmit: (e) => {
+        e.preventDefault();
+        const c = parseCode(input.value);
+        err.hidden = !!c;
+        if (c) join(c);
+      },
+    },
+      el('h2', {}, 'Liste öffnen'),
+      el('p', {}, 'Öffne den Einladungslink, den du von deiner Familie bekommen hast. Oder füge ihn hier ein:'),
+      input, err,
+      el('button', { class: 'btn', type: 'submit' }, 'Liste öffnen')),
+    el('section', { class: 'card' },
+      el('h2', {}, 'Noch keine Liste?'),
+      el('p', {}, 'Lege eine neue, leere Liste an und lade danach unter Einstellungen die Familie ein.'),
+      el('button', { class: 'btn secondary', type: 'button', onclick: () => { confirmNew.hidden = false; } }, 'Neue Liste anlegen'),
+      confirmNew),
+  );
+}
+
+function join(code) {
+  setCode(code);
+  location.hash = '#/';
+  start();
+}
+
+async function copyInvite(field, btn) {
+  try {
+    await navigator.clipboard.writeText(field.value);
+    btn.textContent = 'Kopiert ✓';
+  } catch {
+    field.select();
+    btn.textContent = 'Markiert – jetzt kopieren';
+  }
+  setTimeout(() => { btn.textContent = 'Link kopieren'; }, 2500);
+}
+
 function viewSettings() {
   renderList = () => {};
   const nameLine = el('strong', {}, getName() || '–');
+  const link = el('input', { type: 'text', id: 'invite-link', value: inviteLink(), readonly: true, 'aria-label': 'Einladungslink', onfocus: (e) => e.target.select() });
+  const copyBtn = el('button', { class: 'btn', type: 'button', onclick: () => copyInvite(link, copyBtn) }, 'Link kopieren');
+  const shareBtn = navigator.share
+    ? el('button', { class: 'btn secondary', type: 'button', onclick: () => navigator.share({ title: 'Einkaufsliste', text: 'Unsere Einkaufsliste:', url: link.value }).catch(() => {}) }, 'Teilen …')
+    : null;
   app.replaceChildren(
     ...notices(),
     el('section', { class: 'card' },
@@ -182,11 +256,16 @@ function viewSettings() {
       el('p', {}, 'Steht bei allem, was du auf diesem Handy einträgst oder abhakst.'),
       el('div', {}, nameLine),
       el('button', { class: 'btn secondary', type: 'button', onclick: async () => { nameLine.textContent = await askName(true); } }, 'Namen ändern')),
+    isDemo ? null : el('section', { class: 'card' },
+      el('h2', {}, 'Familie einladen'),
+      el('p', {}, 'Wer diesen Link hat, kann die Liste sehen und ändern. Schick ihn nur an die Familie.'),
+      link,
+      el('div', { class: 'row-buttons' }, copyBtn, shareBtn)),
     el('section', { class: 'card' },
       el('h2', {}, 'App aufs Handy holen'),
       el('p', {}, 'Android (Chrome): Menü ⋮ → „App installieren“.'),
       el('p', {}, 'iPhone (Safari): Teilen-Symbol → „Zum Home-Bildschirm“.'),
-      el('p', {}, 'Den Link dieser Seite einfach an die Familie schicken.')),
+      el('p', {}, 'Am besten den Einladungslink öffnen und dann installieren.')),
     el('section', { class: 'card' },
       el('h2', {}, 'Speicher'),
       el('p', {}, isDemo ? 'Demo-Modus: nur dieses Gerät.' : 'Gemeinsame Liste über Firebase. Änderungen sind sofort bei allen sichtbar, offline Eingetragenes wird nachgesendet.')),
@@ -196,6 +275,8 @@ function viewSettings() {
 const routes = { '/': viewOpen, '/erledigt': viewDone, '/einstellungen': viewSettings };
 
 function route() {
+  document.querySelector('.tabbar').hidden = needsCode();
+  if (needsCode()) return viewJoin();
   const path = location.hash.replace(/^#/, '') || '/';
   const view = routes[path] || viewOpen;
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.route === (routes[path] ? path : '/')));
@@ -256,29 +337,39 @@ function updateBadge() {
   $('#count-open').textContent = n ? String(n) : '';
 }
 
+// Einladungslink ?liste=<code>: Code merken. Er bleibt in der Adresse stehen, damit
+// "Zum Home-Bildschirm" auf dem iPhone ihn mitnimmt (dort hat die App eigenen Speicher).
+const urlCode = new URLSearchParams(location.search).get('liste');
+if (isValidCode(urlCode)) setCode(urlCode);
+
 addEventListener('hashchange', route);
-route();
-askName();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('service-worker.js').catch((e) => console.warn('Service Worker:', e));
 }
 
-createStore()
-  .then((s) => {
-    store = s;
-    s.onConnection((state) => {
-      const dot = $('#status');
-      dot.className = `status ${isDemo ? '' : state}`;
-      dot.title = isDemo ? 'Demo-Modus' : state === 'online' ? 'Verbunden' : 'Offline – wird später gespeichert';
+if (needsCode()) route();
+else start();
+
+function start() {
+  route();
+  askName();
+  createStore(getCode())
+    .then((s) => {
+      store = s;
+      s.onConnection((state) => {
+        const dot = $('#status');
+        dot.className = `status ${isDemo ? '' : state}`;
+        dot.title = isDemo ? 'Demo-Modus' : state === 'online' ? 'Verbunden' : 'Offline – wird später gespeichert';
+      });
+      s.subscribe(
+        (list) => { items = list; loadError = null; updateBadge(); renderList(); },
+        (e) => { loadError = e.code || e.message; route(); },
+      );
+    })
+    .catch((e) => {
+      console.error(e);
+      loadError = e.code || e.message || String(e);
+      route();
     });
-    s.subscribe(
-      (list) => { items = list; loadError = null; updateBadge(); renderList(); },
-      (e) => { loadError = e.code || e.message; route(); },
-    );
-  })
-  .catch((e) => {
-    console.error(e);
-    loadError = e.code || e.message || String(e);
-    route();
-  });
+}
