@@ -7,6 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Einkauf">
   <title>Einkaufsliste</title>
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/freezer.js">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -28,9 +30,9 @@
   <dialog id="dlg" class="dlg"></dialog>
 
   <nav class="tabbar">
-    <a href="#/" data-route="/"><span class="ico">🛒</span>Offen <b id="count-open" class="badge"></b></a>
-    <a href="#/erledigt" data-route="/erledigt"><span class="ico">✅</span>Erledigt</a>
-    <a href="#/einstellungen" data-route="/einstellungen"><span class="ico">⚙</span>Einstellungen</a>
+    <a href="#/" data-tab="einkauf"><span class="ico">🛒</span>Einkauf <b id="count-open" class="badge"></b></a>
+    <a href="#/gefrier" data-tab="gefrier"><span class="ico">❄️</span>Gefrierschrank <b id="count-freezer" class="badge"></b></a>
+    <a href="#/einstellungen" data-tab="einstellungen"><span class="ico">⚙</span>Einstellungen</a>
   </nav>
 
   <script type="module" src="js/app.js"></script>

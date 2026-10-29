@@ -46,13 +46,25 @@ Jede Liste hat einen geheimen, zufälligen Code aus 24 Zeichen. Die Einträge li
 - **Tipp auf einen Eintrag:** Artikel und Menge ändern oder den Eintrag löschen.
 - **Erledigt:** zeigt, wer was wann gekauft hat. „Erledigte löschen“ räumt die Liste auf.
 
+## Gefrierschrank
+
+Zweiter Reiter ❄️ **Gefrierschrank** mit 8 Fächern. Die Namen der Fächer lassen sich unter Einstellungen ändern.
+
+- **Einlagern:** Artikel, Anzahl, Einheit, Fach, *haltbar bis* (Schnellwahl +3/+6/+12 Monate) und optional der Grundbestand. Jede Einlagerung ist ein eigener Posten, mit Datum und Name.
+- **Entnehmen:** im Fach beim Posten oder in „Alle Artikel“. Dort wird zuerst genommen, was am frühesten abläuft. Bei 0 verschwindet der Posten.
+- **Hinweise oben:** abgelaufen (rot), läuft in den nächsten 30 Tagen ab (orange), unter Grundbestand (blau, mit Knopf „Auf Einkaufsliste“).
+- **Zähler am Reiter** und Hinweis im Reiter Einkauf, wenn etwas abgelaufen ist oder bald abläuft.
+- **Verlauf:** alle Bewegungen (eingelagert, entnommen, korrigiert, umgelagert, gelöscht). Einträge, die älter als 12 Monate sind, werden automatisch entfernt.
+
+Daten in Firestore unter `listen/<code>/`: `gefrier`, `grundbestand`, `verlauf`, `einstellungen/faecher`.
+
 ## Lokal testen
 
 ```bash
 python -m http.server 8080
 ```
 
-Danach http://localhost:8080 öffnen. Für Firebase im lokalen Test muss `localhost` unter den autorisierten Domains stehen (das ist der Standard).
+Danach http://localhost:8080 öffnen. Mit `http://localhost:8080/?demo` läuft die App im Demo-Modus, ohne Firebase-Daten zu berühren. Für Firebase im lokalen Test muss `localhost` unter den autorisierten Domains stehen (das ist der Standard).
 
 ## Dateien
 
@@ -60,7 +72,9 @@ Danach http://localhost:8080 öffnen. Für Firebase im lokalen Test muss `localh
 |---|---|
 | `index.html` | Gerüst: Kopfzeile, Inhalt, Tabbar |
 | `css/app.css` | Gestaltung (hell/dunkel) |
-| `js/app.js` | Ansichten, Namensabfrage, Aktionen |
+| `js/app.js` | Einkauf, Einstellungen, Routing, Start |
+| `js/freezer.js` | Gefrierschrank |
+| `js/ui.js` | Gemeinsame Bausteine (Dialoge, Hinweise, Datumsformate) |
 | `js/store.js` | Speicher: Firestore oder Demo-Modus |
 | `js/firebase-config.js` | Firebase-Zugangsdaten (öffentlich, geschützt durch Regeln) |
 | `firestore.rules` | Sicherheitsregeln für Firestore |

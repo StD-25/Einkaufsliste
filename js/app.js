@@ -1,8 +1,9 @@
 import { createStore, isDemo, newCode, isValidCode } from './store.js';
+import { $, el, dialog, toast, fail, confirmDelete, fmtDate } from './ui.js';
+import { initFreezer, viewFreezer, alerts, badgeCount, fachSettingsCard, freezerReady } from './freezer.js';
 
 const NAME_KEY = 'einkaufsliste-name';
 const CODE_KEY = 'einkaufsliste-code';
-const $ = (sel) => document.querySelector(sel);
 const app = $('#app');
 
 let store = null;
@@ -11,17 +12,6 @@ let loadError = null;
 let renderList = () => {};
 
 // ---------- Hilfen ----------
-
-function el(tag, attrs = {}, ...children) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') n.className = v;
-    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of children.flat()) if (c != null) n.append(c);
-  return n;
-}
 
 function getName() {
   try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
@@ -50,57 +40,6 @@ function parseCode(text) {
   return isValidCode(c) ? c : '';
 }
 
-const WT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-function fmtDate(d) {
-  if (!d) return 'gerade eben';
-  const now = new Date();
-  const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const diff = Math.round((day(now) - day(d)) / 86400000);
-  if (diff === 0) return `heute ${time}`;
-  if (diff === 1) return `gestern ${time}`;
-  const dm = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
-  return `${WT[d.getDay()]} ${dm} ${time}`;
-}
-
-let toastTimer;
-function toast(text, actionLabel, action) {
-  const t = $('#toast');
-  $('#toast-text').textContent = text;
-  const b = $('#toast-action');
-  b.textContent = actionLabel || '';
-  b.onclick = () => { t.hidden = true; action?.(); };
-  t.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
-}
-
-function fail(e) {
-  console.error(e);
-  toast('Speichern hat nicht geklappt. Bitte Internetverbindung prüfen.');
-}
-
-// Dialog mit Formular; resolve(Wert des gedrückten Knopfs) oder null bei Abbruch.
-function dialog(build, { required = false } = {}) {
-  const dlg = $('#dlg');
-  dlg.replaceChildren();
-  return new Promise((resolve) => {
-    const form = el('form', { method: 'dialog' });
-    build(form);
-    dlg.append(form);
-    const onCancel = (e) => { if (required) e.preventDefault(); };
-    dlg.addEventListener('cancel', onCancel);
-    dlg.addEventListener('close', function done() {
-      dlg.removeEventListener('close', done);
-      dlg.removeEventListener('cancel', onCancel);
-      resolve(dlg.returnValue || null);
-    });
-    dlg.returnValue = '';
-    dlg.showModal();
-    form.querySelector('input')?.focus();
-  });
-}
-
 async function askName(force) {
   const current = getName();
   if (current && !force) return current;
@@ -108,7 +47,7 @@ async function askName(force) {
   const res = await dialog((f) => {
     f.append(
       el('h2', {}, current ? 'Namen ändern' : 'Wie heißt du?'),
-      el('p', {}, 'Dein Name steht bei jedem Artikel, den du einträgst oder abhakst.'),
+      el('p', {}, 'Dein Name steht bei allem, was du einträgst, abhakst, einlagerst oder entnimmst.'),
       input,
       el('div', { class: 'row' },
         current ? el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen') : null,
@@ -121,7 +60,7 @@ async function askName(force) {
   return getName();
 }
 
-// ---------- Ansichten ----------
+// ---------- Ansichten Einkauf ----------
 
 function itemRow(it) {
   const check = el('button', {
@@ -143,10 +82,28 @@ function itemRow(it) {
 
 function notices() {
   const out = [];
-  if (isDemo) out.push(el('div', { class: 'notice' }, 'Demo-Modus: Firebase ist noch nicht eingerichtet. Einträge bleiben nur auf diesem Gerät. Anleitung im README.'));
+  if (isDemo) out.push(el('div', { class: 'notice' }, 'Demo-Modus: Einträge bleiben nur auf diesem Gerät.'));
   if (loadError === 'permission-denied') out.push(el('div', { class: 'notice' }, 'Kein Zugriff auf die Liste. Bitte den Einladungslink noch einmal öffnen.'));
   else if (loadError) out.push(el('div', { class: 'notice' }, `Verbindung zur Liste fehlgeschlagen: ${loadError}`));
   return out;
+}
+
+// Hinweis im Einkauf, wenn im Gefrierschrank etwas abgelaufen ist oder bald abläuft.
+function freezerNotice() {
+  if (!freezerReady()) return null;
+  const { abgelaufen, bald } = alerts();
+  if (!abgelaufen.length && !bald.length) return null;
+  const teile = [];
+  if (abgelaufen.length) teile.push(`${abgelaufen.length} abgelaufen`);
+  if (bald.length) teile.push(`${bald.length} läuft bald ab`);
+  return el('a', { class: `notice notice-link${abgelaufen.length ? ' red' : ''}`, href: '#/gefrier' }, `❄️ Gefrierschrank: ${teile.join(', ')} ›`);
+}
+
+function shopSeg(active) {
+  const open = items.filter((i) => !i.erledigt).length;
+  return el('div', { class: 'seg', role: 'tablist' },
+    el('a', { href: '#/', class: active === 'offen' ? 'on' : '' }, open ? `Offen (${open})` : 'Offen'),
+    el('a', { href: '#/erledigt', class: active === 'erledigt' ? 'on' : '' }, 'Erledigt'));
 }
 
 function viewOpen() {
@@ -166,13 +123,15 @@ function viewOpen() {
     },
   }, artikel, menge, el('button', { class: 'btn', type: 'submit' }, 'Hinzufügen'));
 
+  const segSlot = el('div');
+  const alertSlot = el('div');
   const list = el('ul', { class: 'list' });
-  const head = el('div', { class: 'section-head' }, el('h2', {}, ''));
-  app.replaceChildren(...notices(), form, head, list);
+  app.replaceChildren(...notices(), alertSlot, segSlot, form, list);
 
   renderList = () => {
+    segSlot.replaceChildren(shopSeg('offen'));
+    alertSlot.replaceChildren(freezerNotice() || '');
     const open = items.filter((i) => !i.erledigt);
-    head.firstChild.textContent = open.length ? `Noch zu kaufen: ${open.length}` : '';
     if (!store) list.replaceChildren(el('li', { class: 'empty' }, 'Liste wird geladen…'));
     else if (!open.length) list.replaceChildren(el('li', { class: 'empty' }, el('span', { class: 'big' }, '🧺'), 'Alles erledigt. Oben eintragen, was fehlt.'));
     else list.replaceChildren(...open.map(itemRow));
@@ -182,10 +141,14 @@ function viewOpen() {
 function viewDone() {
   const list = el('ul', { class: 'list' });
   const clear = el('button', { class: 'btn secondary', type: 'button', onclick: clearDone }, 'Erledigte löschen');
+  const segSlot = el('div');
+  const alertSlot = el('div');
   const head = el('div', { class: 'section-head' }, el('h2', {}, ''), clear);
-  app.replaceChildren(...notices(), head, list);
+  app.replaceChildren(...notices(), alertSlot, segSlot, head, list);
 
   renderList = () => {
+    segSlot.replaceChildren(shopSeg('erledigt'));
+    alertSlot.replaceChildren(freezerNotice() || '');
     const done = items.filter((i) => i.erledigt).sort((x, y) => (y.erledigtAm || Infinity) - (x.erledigtAm || Infinity));
     head.firstChild.textContent = done.length ? `Gekauft: ${done.length}` : '';
     clear.hidden = !done.length;
@@ -261,6 +224,7 @@ function viewSettings() {
       el('p', {}, 'Wer diesen Link hat, kann die Liste sehen und ändern. Schick ihn nur an die Familie.'),
       link,
       el('div', { class: 'row-buttons' }, copyBtn, shareBtn)),
+    freezerReady() ? fachSettingsCard() : null,
     el('section', { class: 'card' },
       el('h2', {}, 'App aufs Handy holen'),
       el('p', {}, 'Android (Chrome): Menü ⋮ → „App installieren“.'),
@@ -272,16 +236,27 @@ function viewSettings() {
   );
 }
 
-const routes = { '/': viewOpen, '/erledigt': viewDone, '/einstellungen': viewSettings };
+// ---------- Routing ----------
+// #/  #/erledigt  #/gefrier  #/gefrier/artikel  #/gefrier/verlauf  #/gefrier/fach/3  #/einstellungen
 
 function route() {
-  document.querySelector('.tabbar').hidden = needsCode();
+  $('.tabbar').hidden = needsCode();
   if (needsCode()) return viewJoin();
-  const path = location.hash.replace(/^#/, '') || '/';
-  const view = routes[path] || viewOpen;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.route === (routes[path] ? path : '/')));
-  view();
+  const [first, ...rest] = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
+  const tab = first === 'gefrier' ? 'gefrier' : first === 'einstellungen' ? 'einstellungen' : 'einkauf';
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+
+  if (tab === 'gefrier') {
+    renderList = () => { if (freezerReady()) viewFreezer(rest[0], rest[1]); else app.replaceChildren(...notices(), el('p', { class: 'empty' }, 'Gefrierschrank wird geladen…')); };
+  } else if (tab === 'einstellungen') {
+    viewSettings();
+  } else if (first === 'erledigt') {
+    viewDone();
+  } else {
+    viewOpen();
+  }
   renderList();
+  if (tab !== 'einkauf') scrollTo(0, 0);
 }
 
 // ---------- Aktionen ----------
@@ -318,18 +293,6 @@ async function edit(it) {
   }
 }
 
-// Sicherheitsabfrage vor jedem Löschen; "Abbrechen" steht vorne und hat den Fokus.
-async function confirmDelete(title, text) {
-  const res = await dialog((f) => f.append(
-    el('h2', {}, title),
-    el('p', {}, text),
-    el('div', { class: 'row' },
-      el('button', { class: 'btn secondary', value: '', autofocus: true }, 'Abbrechen'),
-      el('button', { class: 'btn danger', value: 'ok' }, 'Ja, löschen')),
-  ));
-  return res === 'ok';
-}
-
 async function clearDone() {
   const done = items.filter((i) => i.erledigt);
   if (await confirmDelete('Erledigte löschen?', `${done.length} gekaufte Artikel werden für alle aus der Liste entfernt.`)) {
@@ -339,9 +302,16 @@ async function clearDone() {
 
 // ---------- Start ----------
 
-function updateBadge() {
+function updateBadges() {
   const n = items.filter((i) => !i.erledigt).length;
   $('#count-open').textContent = n ? String(n) : '';
+  const f = freezerReady() ? badgeCount() : 0;
+  $('#count-freezer').textContent = f ? String(f) : '';
+}
+
+function refresh() {
+  updateBadges();
+  renderList();
 }
 
 // Einladungslink ?liste=<code>: Code merken. Er bleibt in der Adresse stehen, damit
@@ -370,9 +340,11 @@ function start() {
         dot.title = isDemo ? 'Demo-Modus' : state === 'online' ? 'Verbunden' : 'Offline – wird später gespeichert';
       });
       s.subscribe(
-        (list) => { items = list; loadError = null; updateBadge(); renderList(); },
+        (list) => { items = list; loadError = null; refresh(); },
         (e) => { loadError = e.code || e.message; route(); },
       );
+      initFreezer({ store: s, app, askName, getItems: () => items, notices, onChange: refresh });
+      route();
     })
     .catch((e) => {
       console.error(e);

@@ -2,25 +2,94 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function validItem(d) {
-      return d.keys().hasOnly(['artikel', 'menge', 'name', 'erstelltAm', 'erledigt', 'erledigtVon', 'erledigtAm'])
-        && d.artikel is string && d.artikel.size() > 0 && d.artikel.size() <= 80
-        && d.menge is string && d.menge.size() <= 30
-        && d.name is string && d.name.size() > 0 && d.name.size() <= 30
-        && d.erledigt is bool
-        && d.erledigtVon is string && d.erledigtVon.size() <= 30;
-    }
-
     // Jede Familie hat einen geheimen Code. Zugriff nur, wer ihn kennt:
     // Für "listen" selbst gibt es keine Regel, also kann niemand die Codes auflisten.
+    function ok(code) {
+      return request.auth != null && code.size() >= 20;
+    }
+
+    function text(v, min, max) {
+      return v is string && v.size() >= min && v.size() <= max;
+    }
+
+    function zahl(v) {
+      return v is number && v >= 0 && v <= 999;
+    }
+
+    function fachNr(v) {
+      return v is int && v >= 1 && v <= 8;
+    }
+
+    // ---------- Einkaufsliste ----------
+
+    function validItem(d) {
+      return d.keys().hasOnly(['artikel', 'menge', 'name', 'erstelltAm', 'erledigt', 'erledigtVon', 'erledigtAm'])
+        && text(d.artikel, 1, 80)
+        && text(d.menge, 0, 30)
+        && text(d.name, 1, 30)
+        && d.erledigt is bool
+        && text(d.erledigtVon, 0, 30);
+    }
+
     match /listen/{code}/items/{id} {
-      allow read, delete: if request.auth != null && code.size() >= 20;
-      allow create: if request.auth != null && code.size() >= 20
+      allow read, delete: if ok(code);
+      allow create: if ok(code)
         && validItem(request.resource.data)
         && request.resource.data.erstelltAm == request.time;
-      allow update: if request.auth != null && code.size() >= 20
+      allow update: if ok(code)
         && validItem(request.resource.data)
         && request.resource.data.erstelltAm == resource.data.erstelltAm;
+    }
+
+    // ---------- Gefrierschrank ----------
+
+    function validPosten(d) {
+      return d.keys().hasOnly(['artikel', 'fach', 'anzahl', 'einheit', 'eingelagertAm', 'eingelagertVon', 'haltbarBis'])
+        && text(d.artikel, 1, 80)
+        && fachNr(d.fach)
+        && zahl(d.anzahl) && d.anzahl > 0
+        && text(d.einheit, 0, 20)
+        && d.eingelagertAm is timestamp
+        && text(d.eingelagertVon, 0, 30)
+        && (d.get('haltbarBis', null) == null || (d.haltbarBis is string && d.haltbarBis.size() == 10));
+    }
+
+    match /listen/{code}/gefrier/{id} {
+      allow read, delete: if ok(code);
+      allow create, update: if ok(code) && validPosten(request.resource.data);
+    }
+
+    match /listen/{code}/grundbestand/{id} {
+      allow read, delete: if ok(code);
+      allow create, update: if ok(code)
+        && request.resource.data.keys().hasOnly(['artikel', 'soll', 'einheit'])
+        && text(request.resource.data.artikel, 1, 80)
+        && zahl(request.resource.data.soll)
+        && text(request.resource.data.einheit, 0, 20);
+    }
+
+    // Verlauf: nur anlegen und (für das Aufräumen) löschen, nie ändern.
+    match /listen/{code}/verlauf/{id} {
+      allow read, delete: if ok(code);
+      allow create: if ok(code)
+        && request.resource.data.keys().hasOnly(['typ', 'artikel', 'fach', 'vonFach', 'anzahl', 'einheit', 'wer', 'wann'])
+        && request.resource.data.typ in ['ein', 'aus', 'korrektur', 'umlagern', 'loeschen']
+        && text(request.resource.data.artikel, 1, 80)
+        && fachNr(request.resource.data.fach)
+        && request.resource.data.vonFach is int
+        && zahl(request.resource.data.anzahl)
+        && text(request.resource.data.einheit, 0, 20)
+        && text(request.resource.data.wer, 0, 30)
+        && request.resource.data.wann == request.time;
+    }
+
+    match /listen/{code}/einstellungen/{id} {
+      allow read: if ok(code);
+      allow write: if ok(code)
+        && id == 'faecher'
+        && request.resource.data.keys().hasOnly(['namen'])
+        && request.resource.data.namen is list
+        && request.resource.data.namen.size() == 8;
     }
   }
 }

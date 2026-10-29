@@ -1,5 +1,5 @@
 // Nach Code-Änderungen die Versionsnummer erhöhen, damit Handys die neue Fassung laden.
-const CACHE = 'einkaufsliste-v3';
+const CACHE = 'einkaufsliste-v4';
 
 const SHELL = [
   './',
@@ -8,6 +8,8 @@ const SHELL = [
   './css/app.css',
   './js/app.js',
   './js/store.js',
+  './js/ui.js',
+  './js/freezer.js',
   './js/firebase-config.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

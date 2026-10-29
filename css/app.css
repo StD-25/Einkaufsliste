@@ -81,7 +81,7 @@ main {
   padding: 12px;
 }
 .add button { grid-column: 1 / -1; }
-input[type="text"] {
+input[type="text"], input[type="number"], input[type="date"], select {
   width: 100%;
   min-width: 0;
   padding: 12px;
@@ -89,7 +89,7 @@ input[type="text"] {
   border-radius: 8px;
   background: var(--bg);
 }
-input[type="text"]:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 .btn {
   border: 0;
@@ -257,3 +257,130 @@ label { font-size: 0.85rem; color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) {
   .item { transition: opacity 0.2s; }
 }
+
+/* ---------- Gefrierschrank & gemeinsame Bausteine ---------- */
+
+.muted { color: var(--muted); }
+.small { font-size: 0.8rem; }
+.btn.small { padding: 6px 10px; font-size: 0.85rem; flex: none; }
+.btn.big { width: 100%; padding: 14px 16px; font-size: 1.05rem; }
+.link { color: var(--blue); font-weight: 600; text-decoration: none; }
+.back { color: var(--blue); text-decoration: none; font-weight: 600; align-self: flex-start; }
+@media (prefers-color-scheme: dark) { .link, .back { color: #9cc6ee; } }
+.section-head h2.title { color: var(--text); font-size: 1.2rem; }
+
+/* Umschalter (Offen/Erledigt, Fächer/Artikel) */
+.seg {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.seg a {
+  text-align: center;
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.seg a.on { background: var(--blue); color: #fff; }
+
+/* Hinweise */
+.notice-link { display: block; color: var(--text); text-decoration: none; font-weight: 600; }
+.notice-link.red { border-color: var(--danger); }
+.alert {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.alert h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.alert ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.alert a { color: var(--text); }
+.alert-red { border-left-color: var(--danger); }
+.alert-red h3 { color: var(--danger); }
+.alert-orange { border-left-color: var(--warn); }
+.alert-orange h3 { color: var(--warn); }
+.alert-blue { border-left-color: var(--blue); }
+@media (prefers-color-scheme: dark) { .alert-blue { border-left-color: #7fb2e5; } }
+.alert li.buy { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Fach-Raster */
+.fach-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fach {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+.fach:active { border-color: var(--blue); }
+.fach-nr { font-size: 1.6rem; font-weight: 700; color: var(--blue); line-height: 1; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) { .fach-nr { color: #9cc6ee; } }
+.fach-name { font-weight: 600; overflow-wrap: anywhere; }
+.fach-count { font-size: 0.8rem; color: var(--muted); }
+.dot { position: absolute; top: 12px; right: 12px; width: 12px; height: 12px; border-radius: 50%; }
+.dot-abgelaufen { background: var(--danger); }
+.dot-bald { background: var(--warn); }
+
+/* Haltbarkeits-Etiketten */
+.tag { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.tag-ok { color: var(--ok); }
+.tag-bald { color: var(--warn); }
+.tag-abgelaufen { color: #fff; background: var(--danger); border-color: var(--danger); }
+.tag-none { color: var(--muted); }
+.item .menge.warn { border-color: var(--warn); color: var(--warn); }
+.item .meta + .meta { margin-top: 4px; }
+
+/* Verlauf */
+.log .item { align-items: flex-start; }
+.log-ico { flex: none; width: 24px; text-align: center; }
+
+/* Formular-Bausteine im Dialog */
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.two > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.stepper { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 6px; }
+.stepper input { text-align: center; font-variant-numeric: tabular-nums; }
+.step {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 1.3rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.chips { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.chip { position: relative; display: block; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span {
+  display: grid;
+  place-items: center;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  font-weight: 700;
+  color: var(--text);
+}
+.chip input:checked + span { background: var(--blue); border-color: var(--blue); color: #fff; }
+.chip input:focus-visible + span { outline: 3px solid #7fb2e5; outline-offset: 1px; }
+.dlg { max-height: calc(100% - 32px); overflow-y: auto; }
+
+/* Fachnamen in den Einstellungen */
+.fach-names { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.fach-name-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
+@media (max-width: 420px) { .fach-names { grid-template-columns: minmax(0, 1fr); } }
