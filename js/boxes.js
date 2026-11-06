@@ -24,6 +24,7 @@ let current = { key: null, update: null };
 let bilder = [];
 let bilderFor = null;
 let bilderUnsub = null;
+const neu = new Set();     // gerade angelegt, vom Speicher noch nicht zurückgemeldet
 
 const newId = () => crypto.randomUUID().replace(/-/g, '');
 const norm = (s) => String(s || '').toLowerCase();
@@ -38,8 +39,8 @@ export function initBoxes(c) {
     bilder: s.collection('bilder'),
   };
   const onErr = (e) => console.warn('Kisten:', e);
-  cols.bereiche.subscribe((d) => { bereiche = d; loaded.b = true; ctx.onChange(); }, onErr);
-  cols.kisten.subscribe((d) => { kisten = d; loaded.k = true; ctx.onChange(); }, onErr);
+  cols.bereiche.subscribe((d) => { bereiche = d; d.forEach((x) => neu.delete(x.id)); loaded.b = true; ctx.onChange(); }, onErr);
+  cols.kisten.subscribe((d) => { kisten = d; d.forEach((x) => neu.delete(x.id)); loaded.k = true; ctx.onChange(); }, onErr);
 }
 
 export const boxesReady = () => loaded.b && loaded.k;
@@ -70,6 +71,17 @@ export function viewBoxes(view, arg) {
   if (view === 'bereich') return viewBereich(arg);
   if (view === 'kiste') return viewKiste(arg);
   return viewOverview();
+}
+
+// Bereich/Kiste nicht (mehr) da: kurz warten, wenn gerade angelegt, sonst zur Übersicht.
+function missing(id) {
+  if (neu.has(id)) ctx.app.replaceChildren(...ctx.notices(), el('p', { class: 'empty' }, 'Wird gespeichert …'));
+  else location.hash = '#/kisten';
+}
+
+function created(id, promise) {
+  neu.add(id);
+  promise.catch((e) => { neu.delete(id); fail(e); location.hash = '#/kisten'; });
 }
 
 const bereichName = (id) => bereiche.find((b) => b.id === id)?.name || 'ohne Bereich';
@@ -182,7 +194,7 @@ function viewBereich(id) {
   const app = ctx.app;
   const update = () => {
     const b = bereiche.find((x) => x.id === id);
-    if (!b) { location.hash = '#/kisten'; return; }
+    if (!b) { missing(id); return; }
     const list = kistenIn(id);
     app.replaceChildren(
       ...ctx.notices(),
@@ -247,7 +259,7 @@ async function editBereich(b) {
   if (!data.name) return;
   if (isNew) {
     const id = newId();
-    cols.bereiche.set(id, { ...data, erstelltAm: ctx.store.NOW }).catch(fail);
+    created(id, cols.bereiche.set(id, { ...data, erstelltAm: ctx.store.NOW }));
     location.hash = `#/kisten/bereich/${id}`;
   } else {
     cols.bereiche.update(b.id, data).catch(fail);
@@ -266,7 +278,7 @@ function nextNummer(b) {
 
 async function newKiste(b) {
   const nummer = el('input', { type: 'text', id: 'n-nummer', value: nextNummer(b), maxlength: 12, required: true });
-  const name = el('input', { type: 'text', id: 'n-name', placeholder: 'optional, z. B. Weihnachtsdeko', maxlength: 60 });
+  const name = el('input', { type: 'text', id: 'n-name', placeholder: 'optional, z. B. Weihnachtsdeko', maxlength: 60, autofocus: true });
   const res = await dialog((f) => f.append(
     el('h2', {}, `Neue Kiste in ${b.name}`),
     el('label', { for: 'n-nummer' }, 'Nummer'), nummer,
@@ -277,10 +289,10 @@ async function newKiste(b) {
   ));
   if (res !== 'ok' || !nummer.value.trim()) return;
   const id = newId();
-  cols.kisten.set(id, {
+  created(id, cols.kisten.set(id, {
     bereich: b.id, nummer: nummer.value.trim().toUpperCase(), name: name.value.trim(), notiz: '',
     inhalt: [], titelbild: '', bildAnzahl: 0, erstelltAm: ctx.store.NOW,
-  }).catch(fail);
+  }));
   location.hash = `#/kisten/kiste/${id}`;
 }
 
@@ -289,18 +301,24 @@ async function newKiste(b) {
 function viewKiste(id) {
   const app = ctx.app;
   const k0 = kisten.find((x) => x.id === id);
-  if (!k0) { location.hash = '#/kisten'; return; }
+  if (!k0) { missing(id); return; }
 
   const head = el('div', { class: 'stack' });
   const photos = el('div', { class: 'photos' });
   const list = el('ul', { class: 'list' });
   const count = el('h2', { class: 'subhead' });
-  const fileInput = el('input', { type: 'file', id: 'k-fotos', accept: 'image/*', multiple: true, class: 'visually-hidden' });
-  fileInput.addEventListener('change', () => {
-    const files = [...fileInput.files];
-    fileInput.value = '';
-    addPhotos(id, files);
-  });
+  // Zwei Wege: Kamera direkt (capture) oder mehrere Fotos aus der Galerie.
+  const picker = (pid, attrs) => {
+    const input = el('input', { type: 'file', id: pid, accept: 'image/*', class: 'visually-hidden', ...attrs });
+    input.addEventListener('change', () => {
+      const files = [...input.files];
+      input.value = '';
+      addPhotos(id, files);
+    });
+    return input;
+  };
+  const camInput = picker('k-kamera', { capture: 'environment' });
+  const fileInput = picker('k-fotos', { multiple: true });
 
   const text = el('input', { type: 'text', id: 'k-inhalt', placeholder: 'Was ist drin?', autocomplete: 'off', maxlength: 100, enterkeyhint: 'done', 'aria-label': 'Inhalt' });
   const anzahl = el('input', { type: 'text', id: 'k-anzahl', placeholder: 'Anz.', autocomplete: 'off', maxlength: 12, inputmode: 'text', 'aria-label': 'Anzahl' });
@@ -320,7 +338,7 @@ function viewKiste(id) {
 
   const update = () => {
     const k = kisten.find((x) => x.id === id);
-    if (!k) { location.hash = '#/kisten'; return; }
+    if (!k) { missing(id); return; }
     head.replaceChildren(
       backLink(`#/kisten/bereich/${k.bereich}`, bereichName(k.bereich)),
       el('div', { class: 'section-head' },
@@ -332,7 +350,8 @@ function viewKiste(id) {
       el('img', { src: b.thumb, alt: '', loading: 'lazy' })));
     const voll = bilder.length >= MAX_BILDER;
     photos.replaceChildren(...tiles,
-      voll ? null : el('label', { class: 'photo photo-add', for: 'k-fotos' }, el('span', { class: 'ico' }, '📷'), el('span', {}, 'Fotos hinzufügen')));
+      voll ? null : el('label', { class: 'photo photo-add', for: 'k-kamera' }, el('span', { class: 'ico' }, '📷'), el('span', {}, 'Foto machen')),
+      voll ? null : el('label', { class: 'photo photo-add', for: 'k-fotos' }, el('span', { class: 'ico' }, '🖼️'), el('span', {}, 'Aus Galerie')));
 
     const inhalt = k.inhalt || [];
     count.textContent = inhalt.length ? `Inhalt (${inhalt.length})` : 'Inhalt';
@@ -343,7 +362,7 @@ function viewKiste(id) {
       : [el('li', { class: 'empty' }, 'Noch nichts eingetragen. Oben eintragen, was in der Kiste ist.')]));
   };
 
-  app.replaceChildren(...ctx.notices(), head, photos, fileInput, count, form, list);
+  app.replaceChildren(...ctx.notices(), head, photos, camInput, fileInput, count, form, list);
   current.update = update;
   update();
 }

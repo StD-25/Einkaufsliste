@@ -247,6 +247,7 @@ function route() {
   const [first, ...rest] = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
   const tab = ['gefrier', 'kisten', 'einstellungen'].includes(first) ? first : 'einkauf';
   resetBoxView();
+  $('#title').textContent = { gefrier: 'Gefrierschrank', kisten: 'Kisten', einstellungen: 'Einstellungen' }[tab] || 'Einkaufsliste';
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
 
   if (tab === 'gefrier') {
