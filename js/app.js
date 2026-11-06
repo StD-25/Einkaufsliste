@@ -1,6 +1,7 @@
 import { createStore, isDemo, newCode, isValidCode } from './store.js';
 import { $, el, dialog, toast, fail, confirmDelete, fmtDate } from './ui.js';
 import { initFreezer, viewFreezer, alerts, badgeCount, fachSettingsCard, freezerReady } from './freezer.js';
+import { initBoxes, viewBoxes, boxesReady, resetBoxView } from './boxes.js';
 
 const NAME_KEY = 'einkaufsliste-name';
 const CODE_KEY = 'einkaufsliste-code';
@@ -238,16 +239,20 @@ function viewSettings() {
 
 // ---------- Routing ----------
 // #/  #/erledigt  #/gefrier  #/gefrier/artikel  #/gefrier/verlauf  #/gefrier/fach/3  #/einstellungen
+// #/kisten  #/kisten/bereich/<id>  #/kisten/kiste/<id>
 
 function route() {
   $('.tabbar').hidden = needsCode();
   if (needsCode()) return viewJoin();
   const [first, ...rest] = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
-  const tab = first === 'gefrier' ? 'gefrier' : first === 'einstellungen' ? 'einstellungen' : 'einkauf';
+  const tab = ['gefrier', 'kisten', 'einstellungen'].includes(first) ? first : 'einkauf';
+  resetBoxView();
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
 
   if (tab === 'gefrier') {
     renderList = () => { if (freezerReady()) viewFreezer(rest[0], rest[1]); else app.replaceChildren(...notices(), el('p', { class: 'empty' }, 'Gefrierschrank wird geladen…')); };
+  } else if (tab === 'kisten') {
+    renderList = () => { if (boxesReady()) viewBoxes(rest[0], rest[1]); else app.replaceChildren(...notices(), el('p', { class: 'empty' }, 'Kisten werden geladen…')); };
   } else if (tab === 'einstellungen') {
     viewSettings();
   } else if (first === 'erledigt') {
@@ -344,6 +349,7 @@ function start() {
         (e) => { loadError = e.code || e.message; route(); },
       );
       initFreezer({ store: s, app, askName, getItems: () => items, notices, onChange: refresh });
+      initBoxes({ store: s, app, askName, notices, onChange: refresh });
       route();
     })
     .catch((e) => {

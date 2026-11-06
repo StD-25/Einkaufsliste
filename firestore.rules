@@ -91,5 +91,45 @@ service cloud.firestore {
         && request.resource.data.namen is list
         && request.resource.data.namen.size() == 8;
     }
+
+    // ---------- Kisten ----------
+
+    match /listen/{code}/bereiche/{id} {
+      allow read, delete: if ok(code);
+      allow create, update: if ok(code)
+        && request.resource.data.keys().hasOnly(['name', 'kuerzel', 'erstelltAm'])
+        && text(request.resource.data.name, 1, 40)
+        && text(request.resource.data.kuerzel, 0, 4)
+        && request.resource.data.erstelltAm is timestamp;
+    }
+
+    function validKiste(d) {
+      return d.keys().hasOnly(['bereich', 'nummer', 'name', 'notiz', 'inhalt', 'titelbild', 'bildAnzahl', 'erstelltAm'])
+        && text(d.bereich, 1, 64)
+        && text(d.nummer, 1, 12)
+        && text(d.name, 0, 60)
+        && text(d.notiz, 0, 500)
+        && d.inhalt is list && d.inhalt.size() <= 300
+        && text(d.titelbild, 0, 40000)
+        && d.bildAnzahl is int && d.bildAnzahl >= 0 && d.bildAnzahl <= 50
+        && d.erstelltAm is timestamp;
+    }
+
+    match /listen/{code}/kisten/{id} {
+      allow read, delete: if ok(code);
+      allow create, update: if ok(code) && validKiste(request.resource.data);
+    }
+
+    // Fotos: verkleinerte JPEG-Daten (ca. 250 KB), nur anlegen und löschen.
+    match /listen/{code}/bilder/{id} {
+      allow read, delete: if ok(code);
+      allow create: if ok(code)
+        && request.resource.data.keys().hasOnly(['kiste', 'voll', 'thumb', 'erstelltAm', 'von'])
+        && text(request.resource.data.kiste, 1, 64)
+        && text(request.resource.data.voll, 1, 400000)
+        && text(request.resource.data.thumb, 1, 40000)
+        && text(request.resource.data.von, 0, 30)
+        && request.resource.data.erstelltAm == request.time;
+    }
   }
 }

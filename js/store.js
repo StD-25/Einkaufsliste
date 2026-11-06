@@ -7,6 +7,7 @@
 //
 // Allgemeine Schnittstelle je Sammlung:  store.collection(name, { order, dir, limit })
 //   subscribe(cb, onError) -> unsubscribe   cb(docs[])  (Zeitstempel als Date, id, pending)
+//   (where: [feld, wert] filtert auf feld == wert)
 //   add(data), set(id, data), update(id, patch), remove(id), removeMany(ids)
 //   Der Wert store.NOW in data wird zum Server-Zeitpunkt.
 // Einkaufsliste (Sammlung items) zusätzlich direkt am store:
@@ -79,11 +80,12 @@ async function createFirestoreBackend(code) {
     Object.entries(data).map(([k, v]) => [k, v === NOW ? fs.serverTimestamp() : v]),
   );
 
-  function collection(name, { order, dir = 'asc', limit } = {}) {
+  function collection(name, { order, dir = 'asc', limit, where } = {}) {
     const col = fs.collection(db, 'listen', code, name);
     return {
       subscribe(cb, onError) {
         const parts = [];
+        if (where) parts.push(fs.where(where[0], '==', where[1]));
         if (order) parts.push(fs.orderBy(order, dir));
         if (limit) parts.push(fs.limit(limit));
         return fs.onSnapshot(
@@ -132,7 +134,7 @@ function createDemoBackend() {
   };
   const emit = (key) => listeners.get(key)?.forEach((fn) => fn());
   const save = (key, rows) => {
-    try { localStorage.setItem(key, JSON.stringify(rows)); } catch { /* Speicher blockiert */ }
+    localStorage.setItem(key, JSON.stringify(rows)); // wirft, wenn voll -> Fehlerhinweis in der App
     chan?.postMessage(key);
     emit(key);
   };
@@ -143,10 +145,10 @@ function createDemoBackend() {
     Object.entries(data).map(([k, v]) => [k, v === NOW ? new Date().toISOString() : v]),
   );
 
-  function collection(name, { order, dir = 'asc', limit } = {}) {
+  function collection(name, { order, dir = 'asc', limit, where } = {}) {
     const key = keyOf(name);
     const read = () => {
-      let rows = load(key).map((r) => {
+      let rows = load(key).filter((r) => !where || r[where[0]] === where[1]).map((r) => {
         const out = { pending: false };
         for (const [k, v] of Object.entries(r)) out[k] = typeof v === 'string' && ISO.test(v) ? new Date(v) : v;
         return out;

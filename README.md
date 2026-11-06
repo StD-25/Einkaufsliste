@@ -58,6 +58,16 @@ Zweiter Reiter ❄️ **Gefrierschrank** mit 8 Fächern. Die Namen der Fächer l
 
 Daten in Firestore unter `listen/<code>/`: `gefrier`, `grundbestand`, `verlauf`, `einstellungen/faecher`.
 
+## Kisten
+
+Dritter Reiter 📦 **Kisten**: frei angelegte Bereiche (z. B. Werkstatt, Garage, Keller) mit nummerierten Kisten.
+
+- **Bereich anlegen:** Name und Kürzel. Aus dem Kürzel entstehen die Kistennummern (G → G01, G02 …). Ein Bereich lässt sich erst löschen, wenn er leer ist.
+- **Kiste:** bis zu 20 Fotos und eine Inhaltsliste (Text, optional Anzahl). Fotos werden im Handy auf ca. 250 KB verkleinert. Tipp auf ein Foto: groß ansehen, als Titelbild setzen oder löschen. Unter „Bearbeiten“ lassen sich Nummer, Bezeichnung, Notiz und Bereich ändern (Kiste umziehen) oder die Kiste löschen.
+- **Suche:** über Nummer, Bezeichnung, Notiz und Inhalt. Alle Suchwörter müssen vorkommen. Mit den Bereichs-Knöpfen lässt sich die Suche auf ausgewählte Bereiche einschränken.
+
+Daten in Firestore unter `listen/<code>/`: `bereiche`, `kisten`, `bilder`. Die Fotos liegen direkt in Firestore (kostenloser Tarif: 1 GiB, reicht für ca. 3.000 Fotos).
+
 ## Lokal testen
 
 ```bash
@@ -74,6 +84,7 @@ Danach http://localhost:8080 öffnen. Mit `http://localhost:8080/?demo` läuft d
 | `css/app.css` | Gestaltung (hell/dunkel) |
 | `js/app.js` | Einkauf, Einstellungen, Routing, Start |
 | `js/freezer.js` | Gefrierschrank |
+| `js/boxes.js` | Kisten |
 | `js/ui.js` | Gemeinsame Bausteine (Dialoge, Hinweise, Datumsformate) |
 | `js/store.js` | Speicher: Firestore oder Demo-Modus |
 | `js/firebase-config.js` | Firebase-Zugangsdaten (öffentlich, geschützt durch Regeln) |
