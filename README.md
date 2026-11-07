@@ -64,9 +64,10 @@ Dritter Reiter 📦 **Kisten**: frei angelegte Bereiche (z. B. Werkstatt, Garage
 
 - **Bereich anlegen:** Name und Kürzel. Aus dem Kürzel entstehen die Kistennummern (G → G01, G02 …). Ein Bereich lässt sich erst löschen, wenn er leer ist.
 - **Kiste:** bis zu 20 Fotos und eine Inhaltsliste (Text, optional Anzahl). Fotos werden im Handy auf ca. 250 KB verkleinert. Tipp auf ein Foto: groß ansehen, als Titelbild setzen oder löschen. Unter „Bearbeiten“ lassen sich Nummer, Bezeichnung, Notiz und Bereich ändern (Kiste umziehen) oder die Kiste löschen.
+- **Türme (freiwillig):** In jedem Bereich lassen sich Türme anlegen, z. B. benannt nach der obersten Kiste. Jede Turm-Karte zeigt alle Kistennummern darin, damit man weiß, welche Kisten unter der obersten stecken. Im Turm-Fenster werden die Kisten per Häkchen zugeordnet; ein Tipp auf eine Nummer übernimmt sie als Turmnamen. Beim Anlegen und Bearbeiten einer Kiste lässt sich der Turm wählen. Wird ein Turm gelöscht, bleiben die Kisten erhalten („Ohne Turm“).
 - **Suche:** über Nummer, Bezeichnung, Notiz und Inhalt. Alle Suchwörter müssen vorkommen. Mit den Bereichs-Knöpfen lässt sich die Suche auf ausgewählte Bereiche einschränken.
 
-Daten in Firestore unter `listen/<code>/`: `bereiche`, `kisten`, `bilder`. Die Fotos liegen direkt in Firestore (kostenloser Tarif: 1 GiB, reicht für ca. 3.000 Fotos).
+Daten in Firestore unter `listen/<code>/`: `bereiche` (mit Liste `tuerme`), `kisten` (Feld `turm`), `bilder`. Die Fotos liegen direkt in Firestore (kostenloser Tarif: 1 GiB, reicht für ca. 3.000 Fotos).
 
 ## Lokal testen
 

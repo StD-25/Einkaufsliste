@@ -97,15 +97,18 @@ service cloud.firestore {
     match /listen/{code}/bereiche/{id} {
       allow read, delete: if ok(code);
       allow create, update: if ok(code)
-        && request.resource.data.keys().hasOnly(['name', 'kuerzel', 'erstelltAm'])
+        && request.resource.data.keys().hasOnly(['name', 'kuerzel', 'tuerme', 'erstelltAm'])
         && text(request.resource.data.name, 1, 40)
+        && request.resource.data.get('tuerme', []) is list
+        && request.resource.data.get('tuerme', []).size() <= 50
         && text(request.resource.data.kuerzel, 0, 4)
         && request.resource.data.erstelltAm is timestamp;
     }
 
     function validKiste(d) {
-      return d.keys().hasOnly(['bereich', 'nummer', 'name', 'notiz', 'inhalt', 'titelbild', 'bildAnzahl', 'erstelltAm'])
+      return d.keys().hasOnly(['bereich', 'turm', 'nummer', 'name', 'notiz', 'inhalt', 'titelbild', 'bildAnzahl', 'erstelltAm'])
         && text(d.bereich, 1, 64)
+        && text(d.get('turm', ''), 0, 64)
         && text(d.nummer, 1, 12)
         && text(d.name, 0, 60)
         && text(d.notiz, 0, 500)

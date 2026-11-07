@@ -430,3 +430,53 @@ textarea { resize: vertical; }
 .photo-add .ico { font-size: 1.6rem; }
 @media (prefers-color-scheme: dark) { .photo-add { color: #9cc6ee; } }
 .photo-big { width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: #000; }
+
+/* Türme */
+.turm {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (prefers-color-scheme: dark) { .turm { border-left-color: #7fb2e5; } }
+.turm-ohne { border-left-color: var(--line); }
+.turm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.turm-name { background: none; border: 0; padding: 4px 0; text-align: left; cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
+.num-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.num {
+  display: inline-grid;
+  place-items: center;
+  min-width: 48px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  cursor: pointer;
+}
+.num-add { color: var(--blue); border-style: dashed; font-size: 1.2rem; }
+@media (prefers-color-scheme: dark) { .num-add { color: #9cc6ee; } }
+.turm-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.rchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rchips .chip span { padding: 0 12px; }
+.check-list { display: flex; flex-direction: column; gap: 2px; max-height: 40vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.check-row { display: flex; align-items: center; gap: 10px; padding: 8px 2px; color: var(--text); font-size: 0.95rem; cursor: pointer; }
+.check-row input { width: 20px; height: 20px; flex: none; }
+.stack-tight { display: flex; flex-direction: column; gap: 6px; }
+.dlg .subhead { margin-top: 4px; }

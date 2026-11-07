@@ -2,8 +2,8 @@
 // Fotos und Inhaltsliste, dazu eine Suche über alle oder ausgewählte Bereiche.
 //
 // Sammlungen unter listen/<code>/:
-//   bereiche  { name, kuerzel, erstelltAm }
-//   kisten    { bereich, nummer, name, notiz, inhalt: [{ t, n }], titelbild, bildAnzahl, erstelltAm }
+//   bereiche  { name, kuerzel, tuerme: [{ id, name }], erstelltAm }
+//   kisten    { bereich, turm ('' = ohne Turm), nummer, name, notiz, inhalt: [{ t, n }], titelbild, bildAnzahl, erstelltAm }
 //   bilder    { kiste, voll, thumb, erstelltAm, von }   (Fotos als verkleinerte JPEG-Daten, ca. 250 KB)
 //
 // Ansichten mit Eingabefeldern werden nur einmal aufgebaut; bei neuen Daten wird nur
@@ -87,6 +87,90 @@ function created(id, promise) {
 const bereichName = (id) => bereiche.find((b) => b.id === id)?.name || 'ohne Bereich';
 const kistenIn = (id) => kisten.filter((k) => k.bereich === id).sort(byNummer);
 
+// ---------- Türme (freiwillige Gruppen innerhalb eines Bereichs) ----------
+
+const byName = (a, b) => a.name.localeCompare(b.name, 'de', { numeric: true });
+const tuermeIn = (bereichId) => [...(bereiche.find((b) => b.id === bereichId)?.tuerme || [])].sort(byName);
+// Turm der Kiste, nur wenn er im Bereich der Kiste (noch) existiert
+const turmOf = (k) => (k.turm ? tuermeIn(k.bereich).find((t) => t.id === k.turm) || null : null);
+const kistenImTurm = (bereichId, turmId) => kistenIn(bereichId).filter((k) => (turmOf(k)?.id || '') === turmId);
+
+// Kistennummern als Knöpfe, ein Tipp öffnet die Kiste
+function nummernChips(list, extra) {
+  return el('div', { class: 'num-chips' },
+    ...list.map((k) => el('a', { class: 'num', href: `#/kisten/kiste/${k.id}` }, k.nummer)),
+    extra || null);
+}
+
+// Auswahl eines Turms als Knöpfe; liefert { wrap, value() }
+function turmPicker(bereichId, selected, name) {
+  const tuerme = tuermeIn(bereichId);
+  const wrap = el('div', { class: 'rchips', role: 'radiogroup' },
+    [{ id: '', name: 'kein Turm' }, ...tuerme].map((t) => el('label', { class: 'chip' },
+      el('input', { type: 'radio', name, value: t.id, checked: t.id === (selected || '') }),
+      el('span', {}, t.name))));
+  return { wrap, tuerme, value: () => wrap.querySelector('input:checked')?.value || '' };
+}
+
+async function editTurm(b, turm) {
+  const isNew = !turm;
+  const alle = kistenIn(b.id);
+  const drin = new Set(isNew ? [] : kistenImTurm(b.id, turm.id).map((k) => k.id));
+  const name = el('input', { type: 'text', id: 't-name', value: turm?.name || '', placeholder: 'z. B. G05 (oberste Kiste)', maxlength: 30, required: true, autofocus: true });
+  const suggest = el('div', { class: 'num-chips' });
+  const boxes = alle.map((k) => {
+    const other = turmOf(k);
+    const cb = el('input', { type: 'checkbox', value: k.id, checked: drin.has(k.id) });
+    cb.addEventListener('change', renderSuggest);
+    return el('label', { class: 'check-row' }, cb,
+      el('span', {}, el('strong', {}, k.nummer), k.name ? ` ${k.name}` : ''),
+      other && other.id !== turm?.id ? el('span', { class: 'muted small' }, ` (jetzt in ${other.name})`) : null);
+  });
+  function renderSuggest() {
+    const ids = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
+    const list = alle.filter((k) => ids.includes(k.id));
+    suggest.replaceChildren(...list.map((k) => el('button', {
+      type: 'button', class: 'num', onclick: () => { name.value = k.nummer; name.focus(); },
+    }, k.nummer)));
+    suggest.hidden = !list.length;
+  }
+  renderSuggest();
+  const res = await dialog((f) => f.append(
+    el('h2', {}, isNew ? `Neuer Turm in ${b.name}` : 'Turm bearbeiten'),
+    el('label', { for: 't-name' }, 'Name des Turms'), name,
+    el('p', { class: 'muted small' }, 'Antippen übernimmt die Nummer als Namen (z. B. die oberste Kiste):'), suggest,
+    el('h3', { class: 'subhead' }, 'Kisten in diesem Turm'),
+    alle.length ? el('div', { class: 'check-list' }, boxes) : el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Bereich.'),
+    el('div', { class: 'row' },
+      isNew ? null : el('button', { class: 'btn danger', value: 'delete', formnovalidate: true }, 'Löschen'),
+      el('span', { class: 'spacer' }),
+      el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
+      el('button', { class: 'btn', value: 'save' }, 'Speichern')),
+  ));
+  const tuerme = [...(bereiche.find((x) => x.id === b.id)?.tuerme || [])];
+  if (res === 'delete' && turm) {
+    const betroffen = kistenImTurm(b.id, turm.id);
+    if (await confirmDelete(`Turm „${turm.name}“ löschen?`, betroffen.length
+      ? `Die ${betroffen.length} Kisten bleiben erhalten und stehen danach unter „Ohne Turm“.`
+      : 'Der leere Turm wird entfernt.')) {
+      cols.bereiche.update(b.id, { tuerme: tuerme.filter((t) => t.id !== turm.id) }).catch(fail);
+      betroffen.forEach((k) => cols.kisten.update(k.id, { turm: '' }).catch(fail));
+    }
+    return;
+  }
+  if (res !== 'save' || !name.value.trim()) return;
+  const id = turm?.id || newId().slice(0, 12);
+  const data = { id, name: name.value.trim() };
+  const next = isNew ? [...tuerme, data] : tuerme.map((t) => (t.id === id ? data : t));
+  cols.bereiche.update(b.id, { tuerme: next }).catch(fail);
+  const gewaehlt = new Set(boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value));
+  for (const k of alle) {
+    const jetzt = turmOf(k)?.id || '';
+    if (gewaehlt.has(k.id) && jetzt !== id) cols.kisten.update(k.id, { turm: id }).catch(fail);
+    else if (!gewaehlt.has(k.id) && jetzt === id) cols.kisten.update(k.id, { turm: '' }).catch(fail);
+  }
+}
+
 function backLink(href, text) {
   return el('a', { class: 'back', href }, `‹ ${text}`);
 }
@@ -113,7 +197,7 @@ function search(text, filter) {
   for (const k of kisten) {
     if (filter.size && !filter.has(k.bereich)) continue;
     const lines = (k.inhalt || []).map((i) => (i.n ? `${i.n} × ${i.t}` : i.t));
-    const hay = norm([k.nummer, k.name, k.notiz, ...lines, bereichName(k.bereich)].join(' \n '));
+    const hay = norm([k.nummer, k.name, k.notiz, ...lines, bereichName(k.bereich), turmOf(k)?.name].join(' \n '));
     if (!words.every((w) => hay.includes(w))) continue;
     const treffer = lines.filter((l) => words.some((w) => norm(l).includes(w)));
     out.push({ k, treffer });
@@ -168,7 +252,7 @@ function viewOverview() {
           thumbImg(k.titelbild, ''),
           el('div', { class: 'box-text' },
             el('div', { class: 'what' }, el('span', { class: 'artikel' }, k.nummer), k.name ? el('span', {}, k.name) : null),
-            el('div', { class: 'meta' }, bereichName(k.bereich)),
+            el('div', { class: 'meta' }, bereichName(k.bereich), turmOf(k) ? el('strong', {}, ` · im Turm ${turmOf(k).name}`) : null),
             treffer.length ? el('div', { class: 'hits' }, treffer.slice(0, 4).join(' · ')) : null))))));
   };
 
@@ -196,12 +280,30 @@ function viewBereich(id) {
     const b = bereiche.find((x) => x.id === id);
     if (!b) { missing(id); return; }
     const list = kistenIn(id);
+    const tuerme = tuermeIn(id);
+    const ohne = kistenImTurm(id, '');
+    const turmCards = tuerme.length ? el('div', { class: 'stack' },
+      el('h2', { class: 'subhead' }, 'Türme'),
+      ...tuerme.map((t) => {
+        const drin = kistenImTurm(id, t.id);
+        return el('section', { class: 'turm' },
+          el('div', { class: 'turm-head' },
+            el('button', { type: 'button', class: 'turm-name', onclick: () => editTurm(b, t), 'aria-label': `Turm ${t.name} bearbeiten` },
+              el('strong', {}, `Turm „${t.name}“`), el('span', { class: 'muted small' }, drin.length === 1 ? ' · 1 Kiste' : ` · ${drin.length} Kisten`)),
+            el('button', { type: 'button', class: 'btn small secondary', onclick: () => editTurm(b, t), 'aria-label': 'Bearbeiten' }, '✎')),
+          nummernChips(drin, el('button', { type: 'button', class: 'num num-add', onclick: () => newKiste(b, t.id), 'aria-label': `Neue Kiste in Turm ${t.name}` }, '+')));
+      }),
+      ohne.length ? el('section', { class: 'turm turm-ohne' },
+        el('div', { class: 'turm-head' }, el('span', {}, el('strong', {}, 'Ohne Turm'), el('span', { class: 'muted small' }, ohne.length === 1 ? ' · 1 Kiste' : ` · ${ohne.length} Kisten`))),
+        nummernChips(ohne)) : null) : null;
     app.replaceChildren(
       ...ctx.notices(),
       backLink('#/kisten', 'Alle Bereiche'),
       el('div', { class: 'section-head' },
         el('h2', { class: 'title' }, b.name),
         el('button', { class: 'btn small secondary', type: 'button', onclick: () => editBereich(b) }, 'Bearbeiten')),
+      turmCards,
+      tuerme.length && list.length ? el('h2', { class: 'subhead' }, 'Alle Kisten') : null,
       list.length
         ? el('ul', { class: 'list' }, list.map((k) => el('li', { class: 'item' },
           el('a', { class: 'body box-row', href: `#/kisten/kiste/${k.id}` },
@@ -209,9 +311,11 @@ function viewBereich(id) {
             el('div', { class: 'box-text' },
               el('div', { class: 'what' }, el('span', { class: 'artikel' }, k.nummer), k.name ? el('span', {}, k.name) : null),
               el('div', { class: 'meta' }, (k.inhalt || []).slice(0, 3).map((i) => i.t).join(', ') || 'noch kein Inhalt eingetragen'),
-              el('div', { class: 'meta' }, `${k.inhalt?.length || 0} Einträge · ${k.bildAnzahl || 0} Fotos`))))))
+              el('div', { class: 'meta' }, `${k.inhalt?.length || 0} Einträge · ${k.bildAnzahl || 0} Fotos${turmOf(k) ? ` · Turm ${turmOf(k).name}` : ''}`))))))
         : el('p', { class: 'empty' }, el('span', { class: 'big' }, '📦'), 'Noch keine Kisten in diesem Bereich.'),
-      el('button', { class: 'btn big', type: 'button', onclick: () => newKiste(b) }, '+ Neue Kiste'),
+      el('div', { class: 'two' },
+        el('button', { class: 'btn big', type: 'button', onclick: () => newKiste(b) }, '+ Neue Kiste'),
+        el('button', { class: 'btn big secondary', type: 'button', onclick: () => editTurm(b, null) }, '+ Turm')),
     );
   };
   current.update = update;
@@ -276,13 +380,16 @@ function nextNummer(b) {
   return `${prefix}${String(max + 1).padStart(2, '0')}`;
 }
 
-async function newKiste(b) {
+async function newKiste(b, turmId = '') {
   const nummer = el('input', { type: 'text', id: 'n-nummer', value: nextNummer(b), maxlength: 12, required: true });
   const name = el('input', { type: 'text', id: 'n-name', placeholder: 'optional, z. B. Weihnachtsdeko', maxlength: 60, autofocus: true });
+  const turm = turmPicker(b.id, turmId, 'n-turm');
   const res = await dialog((f) => f.append(
     el('h2', {}, `Neue Kiste in ${b.name}`),
     el('label', { for: 'n-nummer' }, 'Nummer'), nummer,
     el('label', { for: 'n-name' }, 'Bezeichnung'), name,
+    turm.tuerme.length ? el('label', {}, 'Turm') : null,
+    turm.tuerme.length ? turm.wrap : null,
     el('div', { class: 'row' },
       el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
       el('button', { class: 'btn', value: 'ok' }, 'Anlegen')),
@@ -290,7 +397,7 @@ async function newKiste(b) {
   if (res !== 'ok' || !nummer.value.trim()) return;
   const id = newId();
   created(id, cols.kisten.set(id, {
-    bereich: b.id, nummer: nummer.value.trim().toUpperCase(), name: name.value.trim(), notiz: '',
+    bereich: b.id, turm: turm.value(), nummer: nummer.value.trim().toUpperCase(), name: name.value.trim(), notiz: '',
     inhalt: [], titelbild: '', bildAnzahl: 0, erstelltAm: ctx.store.NOW,
   }));
   location.hash = `#/kisten/kiste/${id}`;
@@ -344,6 +451,7 @@ function viewKiste(id) {
       el('div', { class: 'section-head' },
         el('h2', { class: 'title' }, k.name ? `${k.nummer} · ${k.name}` : k.nummer),
         el('button', { class: 'btn small secondary', type: 'button', onclick: () => editKiste(k) }, 'Bearbeiten')),
+      turmInfo(k),
       k.notiz ? el('p', { class: 'note' }, k.notiz) : null);
 
     const tiles = bilder.map((b) => el('button', { type: 'button', class: 'photo', onclick: () => showPhoto(k, b), 'aria-label': 'Foto groß anzeigen' },
@@ -367,18 +475,38 @@ function viewKiste(id) {
   update();
 }
 
+// „im Turm G05 · zusammen mit G02, G11“
+function turmInfo(k) {
+  const t = turmOf(k);
+  if (!t) return null;
+  const andere = kistenImTurm(k.bereich, t.id).filter((x) => x.id !== k.id);
+  return el('div', { class: 'turm-info' },
+    el('span', {}, '🗼 im Turm ', el('strong', {}, t.name), andere.length ? ' · zusammen mit' : ' · allein im Turm'),
+    andere.length ? nummernChips(andere) : null);
+}
+
 async function editKiste(k) {
   const nummer = el('input', { type: 'text', id: 'e-nummer', value: k.nummer, maxlength: 12, required: true });
   const name = el('input', { type: 'text', id: 'e-name', value: k.name || '', maxlength: 60 });
   const notiz = el('textarea', { id: 'e-notiz', maxlength: 500, rows: 3 }, k.notiz || '');
   const bereich = el('select', { id: 'e-bereich' }, [...bereiche].sort((a, b) => a.name.localeCompare(b.name, 'de'))
     .map((b) => el('option', { value: b.id, selected: b.id === k.bereich }, b.name)));
+  // Turm-Auswahl passend zum gewählten Bereich
+  const turmSlot = el('div', { class: 'stack-tight' });
+  let turm = null;
+  const renderTurm = () => {
+    turm = turmPicker(bereich.value, bereich.value === k.bereich ? turmOf(k)?.id : '', 'e-turm');
+    turmSlot.replaceChildren(...(turm.tuerme.length ? [el('label', {}, 'Turm'), turm.wrap] : []));
+  };
+  bereich.addEventListener('change', renderTurm);
+  renderTurm();
   const res = await dialog((f) => f.append(
     el('h2', {}, 'Kiste bearbeiten'),
     el('label', { for: 'e-nummer' }, 'Nummer'), nummer,
     el('label', { for: 'e-name' }, 'Bezeichnung'), name,
     el('label', { for: 'e-notiz' }, 'Notiz (z. B. Standort im Regal)'), notiz,
     el('label', { for: 'e-bereich' }, 'Bereich'), bereich,
+    turmSlot,
     el('div', { class: 'row' },
       el('button', { class: 'btn danger', value: 'delete', formnovalidate: true }, 'Löschen'),
       el('span', { class: 'spacer' }),
@@ -402,6 +530,7 @@ async function editKiste(k) {
     name: name.value.trim(),
     notiz: notiz.value.trim(),
     bereich: bereich.value || k.bereich,
+    turm: turm.value(),
   }).catch(fail);
 }
 
