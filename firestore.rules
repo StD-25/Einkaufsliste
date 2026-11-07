@@ -106,9 +106,10 @@ service cloud.firestore {
     }
 
     function validKiste(d) {
-      return d.keys().hasOnly(['bereich', 'turm', 'nummer', 'name', 'notiz', 'inhalt', 'titelbild', 'bildAnzahl', 'erstelltAm'])
+      return d.keys().hasOnly(['bereich', 'turm', 'pos', 'nummer', 'name', 'notiz', 'inhalt', 'titelbild', 'bildAnzahl', 'erstelltAm'])
         && text(d.bereich, 1, 64)
         && text(d.get('turm', ''), 0, 64)
+        && d.get('pos', 0) is int && d.get('pos', 0) >= -100000 && d.get('pos', 0) <= 100000
         && text(d.nummer, 1, 12)
         && text(d.name, 0, 60)
         && text(d.notiz, 0, 500)

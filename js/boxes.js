@@ -3,7 +3,7 @@
 //
 // Sammlungen unter listen/<code>/:
 //   bereiche  { name, kuerzel, tuerme: [{ id, name }], erstelltAm }
-//   kisten    { bereich, turm ('' = ohne Turm), nummer, name, notiz, inhalt: [{ t, n }], titelbild, bildAnzahl, erstelltAm }
+//   kisten    { bereich, turm ('' = ohne Turm), pos (Reihenfolge im Turm, klein = oben), nummer, name, notiz, inhalt: [{ t, n }], titelbild, bildAnzahl, erstelltAm }
 //   bilder    { kiste, voll, thumb, erstelltAm, von }   (Fotos als verkleinerte JPEG-Daten, ca. 250 KB)
 //
 // Ansichten mit Eingabefeldern werden nur einmal aufgebaut; bei neuen Daten wird nur
@@ -93,7 +93,45 @@ const byName = (a, b) => a.name.localeCompare(b.name, 'de', { numeric: true });
 const tuermeIn = (bereichId) => [...(bereiche.find((b) => b.id === bereichId)?.tuerme || [])].sort(byName);
 // Turm der Kiste, nur wenn er im Bereich der Kiste (noch) existiert
 const turmOf = (k) => (k.turm ? tuermeIn(k.bereich).find((t) => t.id === k.turm) || null : null);
-const kistenImTurm = (bereichId, turmId) => kistenIn(bereichId).filter((k) => (turmOf(k)?.id || '') === turmId);
+// Im Turm von oben nach unten (pos), sonst nach Nummer
+const byPos = (a, b) => (Number.isInteger(a.pos) ? a.pos : 1e6) - (Number.isInteger(b.pos) ? b.pos : 1e6) || byNummer(a, b);
+const kistenImTurm = (bereichId, turmId) => {
+  const list = kistenIn(bereichId).filter((k) => (turmOf(k)?.id || '') === turmId);
+  return turmId ? list.sort(byPos) : list;
+};
+// Position für neu in den Turm gelegte Kisten: oben drauf
+function obenPos(bereichId, turmId) {
+  const list = kistenImTurm(bereichId, turmId).filter((k) => Number.isInteger(k.pos));
+  return list.length ? Math.min(...list.map((k) => k.pos)) - 1 : 0;
+}
+
+// Kiste im Turm eine Stelle nach oben (-1) oder unten (+1); danach 0, 1, 2 … durchnummerieren
+function moveInTurm(k, dir) {
+  const t = turmOf(k);
+  if (!t) return;
+  const list = kistenImTurm(k.bereich, t.id);
+  const i = list.findIndex((x) => x.id === k.id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  list.forEach((x, n) => { if (x.pos !== n) cols.kisten.update(x.id, { pos: n }).catch(fail); });
+}
+
+// Turm als Stapel von oben nach unten: Platz, Bild (Tipp = groß), Nummer/Name (Tipp = Kiste), Pfeile
+function turmStack(list) {
+  if (!list.length) return el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Turm.');
+  return el('div', { class: 'stack-wrap' },
+    list.length > 1 ? el('div', { class: 'stack-end' }, '▲ oben') : null,
+    el('ol', { class: 'turm-stack' }, list.map((k, i) => el('li', { class: 'stack-row' },
+      el('span', { class: 'stack-nr' }, String(i + 1)),
+      thumbBtn(k),
+      el('a', { class: 'stack-text', href: `#/kisten/kiste/${k.id}` },
+        el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null),
+      list.length > 1 ? el('span', { class: 'stack-move' },
+        el('button', { type: 'button', class: 'mv', disabled: i === 0, onclick: () => moveInTurm(k, -1), 'aria-label': `${k.nummer} nach oben` }, '▲'),
+        el('button', { type: 'button', class: 'mv', disabled: i === list.length - 1, onclick: () => moveInTurm(k, 1), 'aria-label': `${k.nummer} nach unten` }, '▼')) : null))),
+    list.length > 1 ? el('div', { class: 'stack-end' }, '▼ unten') : null);
+}
 
 // Kistennummern als Knöpfe, ein Tipp öffnet die Kiste
 function nummernChips(list, extra) {
@@ -132,7 +170,8 @@ async function addToTurm(b, t) {
   ));
   if (res !== 'ok') return;
   const ids = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
-  ids.forEach((id) => cols.kisten.update(id, { turm: t.id }).catch(fail));
+  const top = obenPos(b.id, t.id);
+  ids.forEach((id, i) => cols.kisten.update(id, { turm: t.id, pos: top - ids.length + i }).catch(fail));
   if (ids.length) toast(ids.length === 1 ? '1 Kiste hinzugefügt' : `${ids.length} Kisten hinzugefügt`);
 }
 
@@ -198,9 +237,10 @@ async function editTurm(b, turm) {
   const next = isNew ? [...tuerme, data] : tuerme.map((t) => (t.id === id ? data : t));
   cols.bereiche.update(b.id, { tuerme: next }).catch(fail);
   const gewaehlt = new Set(boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value));
+  let top = isNew ? 0 : obenPos(b.id, id);
   for (const k of alle) {
     const jetzt = turmOf(k)?.id || '';
-    if (gewaehlt.has(k.id) && jetzt !== id) cols.kisten.update(k.id, { turm: id }).catch(fail);
+    if (gewaehlt.has(k.id) && jetzt !== id) cols.kisten.update(k.id, { turm: id, pos: --top }).catch(fail);
     else if (!gewaehlt.has(k.id) && jetzt === id) cols.kisten.update(k.id, { turm: '' }).catch(fail);
   }
 }
@@ -345,8 +385,8 @@ function viewBereich(id) {
             el('button', { type: 'button', class: 'turm-name', onclick: () => editTurm(b, t), 'aria-label': `Turm ${t.name} bearbeiten` },
               el('strong', {}, `Turm „${t.name}“`), el('span', { class: 'muted small' }, drin.length === 1 ? ' · 1 Kiste' : ` · ${drin.length} Kisten`)),
             el('button', { type: 'button', class: 'btn small secondary', onclick: () => editTurm(b, t), 'aria-label': 'Bearbeiten' }, '✎')),
-          boxTiles(drin, el('button', { type: 'button', class: 'box-tile tile-add', onclick: () => addToTurm(b, t), 'aria-label': `Vorhandene Kisten zu Turm ${t.name} hinzufügen` },
-            el('span', { class: 'tile-plus' }, '+'), el('span', { class: 'small' }, 'Kisten'))));
+          turmStack(drin),
+          el('button', { type: 'button', class: 'btn small secondary add-to-turm', onclick: () => addToTurm(b, t) }, '+ Vorhandene Kisten hinzufügen'));
       }),
       ohne.length ? el('section', { class: 'turm turm-ohne' },
         el('div', { class: 'turm-head' }, el('span', {}, el('strong', {}, 'Ohne Turm'), el('span', { class: 'muted small' }, ohne.length === 1 ? ' · 1 Kiste' : ` · ${ohne.length} Kisten`))),
@@ -451,7 +491,7 @@ async function newKiste(b, turmId = '') {
   if (res !== 'ok' || !nummer.value.trim()) return;
   const id = newId();
   created(id, cols.kisten.set(id, {
-    bereich: b.id, turm: turm.value(), nummer: nummer.value.trim().toUpperCase(), name: name.value.trim(), notiz: '',
+    bereich: b.id, turm: turm.value(), pos: turm.value() ? obenPos(b.id, turm.value()) : 0, nummer: nummer.value.trim().toUpperCase(), name: name.value.trim(), notiz: '',
     inhalt: [], titelbild: '', bildAnzahl: 0, erstelltAm: ctx.store.NOW,
   }));
   location.hash = `#/kisten/kiste/${id}`;
@@ -533,10 +573,16 @@ function viewKiste(id) {
 function turmInfo(k) {
   const t = turmOf(k);
   if (!t) return null;
-  const andere = kistenImTurm(k.bereich, t.id).filter((x) => x.id !== k.id);
+  const list = kistenImTurm(k.bereich, t.id);
+  const platz = list.findIndex((x) => x.id === k.id) + 1;
   return el('div', { class: 'turm-info' },
-    el('span', {}, '🗼 im Turm ', el('strong', {}, t.name), andere.length ? ' · zusammen mit' : ' · allein im Turm'),
-    andere.length ? nummernChips(andere) : null);
+    el('span', {}, '🗼 im Turm ', el('strong', {}, t.name),
+      list.length > 1 ? ` · ${platz}. von ${list.length} (von oben)` : ' · allein im Turm'),
+    list.length > 1 ? el('div', { class: 'num-chips' }, el('span', { class: 'muted small stack-hint' }, 'oben'),
+      ...list.map((x) => (x.id === k.id
+        ? el('span', { class: 'num num-self' }, x.nummer)
+        : el('a', { class: 'num', href: `#/kisten/kiste/${x.id}` }, x.nummer))),
+      el('span', { class: 'muted small stack-hint' }, 'unten')) : null);
 }
 
 async function editKiste(k) {
@@ -585,6 +631,8 @@ async function editKiste(k) {
     notiz: notiz.value.trim(),
     bereich: bereich.value || k.bereich,
     turm: turm.value(),
+    // neuer Turm: oben drauf legen
+    ...(turm.value() && turm.value() !== (turmOf(k)?.id || '') ? { pos: obenPos(bereich.value || k.bereich, turm.value()) } : {}),
   }).catch(fail);
 }
 
