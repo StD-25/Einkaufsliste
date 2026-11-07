@@ -258,16 +258,70 @@ function thumbBtn(k) {
     el('img', { class: 'thumb', src: k.titelbild, alt: '', loading: 'lazy' }));
 }
 
-// Titelbild groß: sofort die Vorschau, dann das volle Foto nachladen.
+// Große Bildansicht mit Wischen (links/rechts) und ‹ › für mehrere Fotos.
+// list: [{ id, voll, thumb }]; onChange(foto) bei jedem Wechsel.
+function gallery(list, start, onChange) {
+  let items = list;
+  let i = Math.max(0, Math.min(start, list.length - 1));
+  const img = el('img', { class: 'photo-big', alt: 'Foto', draggable: 'false' });
+  const count = el('span', { class: 'gal-count' });
+  const go = (d) => { if (items.length < 2) return; i = (i + d + items.length) % items.length; show(); };
+  const prev = el('button', { type: 'button', class: 'gal-nav gal-prev', 'aria-label': 'Vorheriges Foto', onclick: () => go(-1) }, '‹');
+  const next = el('button', { type: 'button', class: 'gal-nav gal-next', 'aria-label': 'Nächstes Foto', onclick: () => go(1) }, '›');
+  const node = el('div', { class: 'gal' }, img, prev, next, count);
+  function show() {
+    const b = items[i];
+    if (!b) return;
+    img.src = b.voll || b.thumb;
+    const many = items.length > 1;
+    prev.hidden = !many; next.hidden = !many; count.hidden = !many;
+    count.textContent = `${i + 1} / ${items.length}`;
+    onChange?.(b);
+  }
+  // Wischen: waagerecht mindestens 40 px und mehr als senkrecht
+  let x0 = null;
+  let y0 = 0;
+  img.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; });
+  img.addEventListener('pointercancel', () => { x0 = null; });
+  img.addEventListener('pointerup', (e) => {
+    if (x0 === null) return;
+    const dx = e.clientX - x0;
+    const dy = e.clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+  });
+  node.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') go(-1);
+    if (e.key === 'ArrowRight') go(1);
+  });
+  show();
+  return {
+    node,
+    current: () => items[i],
+    setList(l, id) {
+      if (!l.length) return;
+      items = l;
+      const j = l.findIndex((x) => x.id === id);
+      i = j >= 0 ? j : Math.min(i, l.length - 1);
+      show();
+    },
+  };
+}
+
+// Titelbild groß: sofort die Vorschau, dann alle Fotos der Kiste nachladen (wischen).
 async function showTitelbild(k) {
-  const img = el('img', { class: 'photo-big', src: k.titelbild, alt: `Foto von Kiste ${k.nummer}` });
+  const g = gallery([{ id: '', thumb: k.titelbild }], 0);
+  let first = true;
   const unsub = ctx.store.collection('bilder', { where: ['kiste', k.id] }).subscribe((d) => {
-    const b = d.find((x) => x.thumb === k.titelbild) || d[0];
-    if (b?.voll) img.src = b.voll;
+    if (!d.length) return;
+    const list = d.sort((a, b) => (a.erstelltAm || 0) - (b.erstelltAm || 0));
+    const keep = first ? (list.find((x) => x.thumb === k.titelbild) || list[0]).id : g.current()?.id;
+    first = false;
+    g.setList(list, keep);
   }, () => {});
   const res = await dialog((f) => f.append(
     el('h2', {}, k.name ? `${k.nummer} · ${k.name}` : k.nummer),
-    img,
+    g.node,
     el('div', { class: 'row' },
       el('button', { class: 'btn secondary', value: 'open' }, 'Kiste öffnen'),
       el('button', { class: 'btn', value: '', autofocus: true }, 'Schließen')),
@@ -750,17 +804,24 @@ async function addPhotos(kisteId, files) {
   toast(ok === 1 ? 'Foto gespeichert' : `${ok} Fotos gespeichert`);
 }
 
-async function showPhoto(k, b) {
-  const istTitel = k.titelbild === b.thumb;
+async function showPhoto(k, start) {
+  const meta = el('p', { class: 'muted small' });
+  const titelBtn = el('button', { class: 'btn secondary', value: 'titel' }, 'Als Titelbild');
+  const g = gallery([...bilder], Math.max(0, bilder.findIndex((x) => x.id === start.id)), (b) => {
+    meta.textContent = `${b.von || '?'} · ${fmtDate(b.erstelltAm instanceof Date ? b.erstelltAm : null)}`;
+    titelBtn.hidden = k.titelbild === b.thumb;
+  });
   const res = await dialog((f) => f.append(
-    el('img', { class: 'photo-big', src: b.voll || b.thumb, alt: `Foto von Kiste ${k.nummer}` }),
-    el('p', { class: 'muted small' }, `${b.von || '?'} · ${fmtDate(b.erstelltAm instanceof Date ? b.erstelltAm : null)}`),
+    g.node,
+    meta,
     el('div', { class: 'row' },
       el('button', { class: 'btn danger', value: 'delete' }, 'Löschen'),
       el('span', { class: 'spacer' }),
-      istTitel ? null : el('button', { class: 'btn secondary', value: 'titel' }, 'Als Titelbild'),
+      titelBtn,
       el('button', { class: 'btn', value: '', autofocus: true }, 'Schließen')),
   ));
+  const b = g.current();
+  const istTitel = k.titelbild === b.thumb;
   if (res === 'titel') {
     cols.kisten.update(k.id, { titelbild: b.thumb }).catch(fail);
   } else if (res === 'delete' && await confirmDelete('Foto löschen?', `Das Foto wird aus Kiste ${k.nummer} entfernt.`)) {
