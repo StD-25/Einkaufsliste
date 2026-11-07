@@ -102,6 +102,40 @@ function nummernChips(list, extra) {
     extra || null);
 }
 
+// Kisten eines Turms als kleine Kacheln: Bild (Tipp = groß) und Nummer (Tipp = Kiste öffnen)
+function boxTiles(list, extra) {
+  return el('div', { class: 'box-tiles' },
+    ...list.map((k) => el('div', { class: 'box-tile' },
+      thumbBtn(k),
+      el('a', { class: 'num', href: `#/kisten/kiste/${k.id}` }, k.nummer))),
+    extra || null);
+}
+
+// Vorhandene Kisten des Bereichs einem Turm zuordnen
+async function addToTurm(b, t) {
+  const kandidaten = kistenIn(b.id).filter((k) => turmOf(k)?.id !== t.id);
+  const boxes = kandidaten.map((k) => {
+    const other = turmOf(k);
+    return el('label', { class: 'check-row' },
+      el('input', { type: 'checkbox', value: k.id }),
+      el('span', {}, el('strong', {}, k.nummer), k.name ? ` ${k.name}` : ''),
+      other ? el('span', { class: 'muted small' }, ` (jetzt in ${other.name})`) : null);
+  });
+  const res = await dialog((f) => f.append(
+    el('h2', {}, `Kisten zu Turm „${t.name}“ hinzufügen`),
+    kandidaten.length
+      ? el('div', { class: 'check-list' }, boxes)
+      : el('p', { class: 'muted small' }, 'Alle Kisten dieses Bereichs stehen schon in diesem Turm.'),
+    el('div', { class: 'row' },
+      el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
+      kandidaten.length ? el('button', { class: 'btn', value: 'ok' }, 'Hinzufügen') : null),
+  ));
+  if (res !== 'ok') return;
+  const ids = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
+  ids.forEach((id) => cols.kisten.update(id, { turm: t.id }).catch(fail));
+  if (ids.length) toast(ids.length === 1 ? '1 Kiste hinzugefügt' : `${ids.length} Kisten hinzugefügt`);
+}
+
 // Auswahl eines Turms als Knöpfe; liefert { wrap, value() }
 function turmPicker(bereichId, selected, name) {
   const tuerme = tuermeIn(bereichId);
@@ -175,10 +209,31 @@ function backLink(href, text) {
   return el('a', { class: 'back', href }, `‹ ${text}`);
 }
 
-function thumbImg(src, alt) {
-  return src
-    ? el('img', { class: 'thumb', src, alt, loading: 'lazy' })
-    : el('span', { class: 'thumb thumb-empty', 'aria-hidden': 'true' }, '📦');
+// Vorschaubild in Listen: Tipp zeigt das Titelbild groß, ohne Bild öffnet es die Kiste.
+function thumbBtn(k) {
+  if (!k.titelbild) {
+    return el('a', { class: 'thumb thumb-empty', href: `#/kisten/kiste/${k.id}`, 'aria-label': `Kiste ${k.nummer} öffnen` }, '📦');
+  }
+  return el('button', { type: 'button', class: 'thumb-btn', onclick: () => showTitelbild(k), 'aria-label': `Bild von Kiste ${k.nummer} groß anzeigen` },
+    el('img', { class: 'thumb', src: k.titelbild, alt: '', loading: 'lazy' }));
+}
+
+// Titelbild groß: sofort die Vorschau, dann das volle Foto nachladen.
+async function showTitelbild(k) {
+  const img = el('img', { class: 'photo-big', src: k.titelbild, alt: `Foto von Kiste ${k.nummer}` });
+  const unsub = ctx.store.collection('bilder', { where: ['kiste', k.id] }).subscribe((d) => {
+    const b = d.find((x) => x.thumb === k.titelbild) || d[0];
+    if (b?.voll) img.src = b.voll;
+  }, () => {});
+  const res = await dialog((f) => f.append(
+    el('h2', {}, k.name ? `${k.nummer} · ${k.name}` : k.nummer),
+    img,
+    el('div', { class: 'row' },
+      el('button', { class: 'btn secondary', value: 'open' }, 'Kiste öffnen'),
+      el('button', { class: 'btn', value: '', autofocus: true }, 'Schließen')),
+  ));
+  unsub?.();
+  if (res === 'open') location.hash = `#/kisten/kiste/${k.id}`;
 }
 
 // ---------- Übersicht mit Suche ----------
@@ -248,12 +303,11 @@ function viewOverview() {
     return el('div', { class: 'stack' },
       el('h2', { class: 'subhead' }, res.length === 1 ? '1 Kiste gefunden' : `${res.length} Kisten gefunden`),
       el('ul', { class: 'list' }, res.map(({ k, treffer }) => el('li', { class: 'item' },
-        el('a', { class: 'body box-row', href: `#/kisten/kiste/${k.id}` },
-          thumbImg(k.titelbild, ''),
-          el('div', { class: 'box-text' },
+        thumbBtn(k),
+        el('a', { class: 'body box-text', href: `#/kisten/kiste/${k.id}` },
             el('div', { class: 'what' }, el('span', { class: 'artikel' }, k.nummer), k.name ? el('span', {}, k.name) : null),
             el('div', { class: 'meta' }, bereichName(k.bereich), turmOf(k) ? el('strong', {}, ` · im Turm ${turmOf(k).name}`) : null),
-            treffer.length ? el('div', { class: 'hits' }, treffer.slice(0, 4).join(' · ')) : null))))));
+            treffer.length ? el('div', { class: 'hits' }, treffer.slice(0, 4).join(' · ')) : null)))));
   };
 
   const update = () => {
@@ -291,11 +345,12 @@ function viewBereich(id) {
             el('button', { type: 'button', class: 'turm-name', onclick: () => editTurm(b, t), 'aria-label': `Turm ${t.name} bearbeiten` },
               el('strong', {}, `Turm „${t.name}“`), el('span', { class: 'muted small' }, drin.length === 1 ? ' · 1 Kiste' : ` · ${drin.length} Kisten`)),
             el('button', { type: 'button', class: 'btn small secondary', onclick: () => editTurm(b, t), 'aria-label': 'Bearbeiten' }, '✎')),
-          nummernChips(drin, el('button', { type: 'button', class: 'num num-add', onclick: () => newKiste(b, t.id), 'aria-label': `Neue Kiste in Turm ${t.name}` }, '+')));
+          boxTiles(drin, el('button', { type: 'button', class: 'box-tile tile-add', onclick: () => addToTurm(b, t), 'aria-label': `Vorhandene Kisten zu Turm ${t.name} hinzufügen` },
+            el('span', { class: 'tile-plus' }, '+'), el('span', { class: 'small' }, 'Kisten'))));
       }),
       ohne.length ? el('section', { class: 'turm turm-ohne' },
         el('div', { class: 'turm-head' }, el('span', {}, el('strong', {}, 'Ohne Turm'), el('span', { class: 'muted small' }, ohne.length === 1 ? ' · 1 Kiste' : ` · ${ohne.length} Kisten`))),
-        nummernChips(ohne)) : null) : null;
+        boxTiles(ohne)) : null) : null;
     app.replaceChildren(
       ...ctx.notices(),
       backLink('#/kisten', 'Alle Bereiche'),
@@ -306,12 +361,11 @@ function viewBereich(id) {
       tuerme.length && list.length ? el('h2', { class: 'subhead' }, 'Alle Kisten') : null,
       list.length
         ? el('ul', { class: 'list' }, list.map((k) => el('li', { class: 'item' },
-          el('a', { class: 'body box-row', href: `#/kisten/kiste/${k.id}` },
-            thumbImg(k.titelbild, ''),
-            el('div', { class: 'box-text' },
+          thumbBtn(k),
+          el('a', { class: 'body box-text', href: `#/kisten/kiste/${k.id}` },
               el('div', { class: 'what' }, el('span', { class: 'artikel' }, k.nummer), k.name ? el('span', {}, k.name) : null),
               el('div', { class: 'meta' }, (k.inhalt || []).slice(0, 3).map((i) => i.t).join(', ') || 'noch kein Inhalt eingetragen'),
-              el('div', { class: 'meta' }, `${k.inhalt?.length || 0} Einträge · ${k.bildAnzahl || 0} Fotos${turmOf(k) ? ` · Turm ${turmOf(k).name}` : ''}`))))))
+              el('div', { class: 'meta' }, `${k.inhalt?.length || 0} Einträge · ${k.bildAnzahl || 0} Fotos${turmOf(k) ? ` · Turm ${turmOf(k).name}` : ''}`)))))
         : el('p', { class: 'empty' }, el('span', { class: 'big' }, '📦'), 'Noch keine Kisten in diesem Bereich.'),
       el('div', { class: 'two' },
         el('button', { class: 'btn big', type: 'button', onclick: () => newKiste(b) }, '+ Neue Kiste'),
