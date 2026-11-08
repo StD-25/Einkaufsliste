@@ -1,5 +1,5 @@
 // Nach Code-Änderungen die Versionsnummer erhöhen, damit Handys die neue Fassung laden.
-const CACHE = 'einkaufsliste-v12';
+const CACHE = 'einkaufsliste-v13';
 
 const SHELL = [
   './',

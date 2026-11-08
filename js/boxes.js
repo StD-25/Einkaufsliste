@@ -429,17 +429,20 @@ function gallery(list, start, onChange, onVertical) {
 
 // Titelbild groß: sofort die Vorschau, dann alle Fotos der Kiste nachladen.
 // Links/rechts: Fotos dieser Kiste. Steht die Kiste in einem Turm: nach oben wischen = Kiste darunter,
-// nach unten wischen = Kiste darüber.
+// nach unten wischen = Kiste darüber – auch über Turmgrenzen hinweg (Türme des Bereichs nacheinander).
+function turmFolge(bereichId) {
+  return tuermeIn(bereichId).flatMap((t) => kistenImTurm(bereichId, t.id));
+}
+
 async function showTitelbild(k0) {
   let k = k0;
   let unsub = null;
   const title = el('h2', {});
   const sub = el('p', { class: 'muted small gal-sub' });
   const g = gallery([], 0, null, (dir) => {
-    const t = turmOf(k);
-    if (!t) return;
-    const list = kistenImTurm(k.bereich, t.id);
-    const n = list[list.findIndex((x) => x.id === k.id) + dir];
+    if (!turmOf(k)) return;
+    const folge = turmFolge(k.bereich);
+    const n = folge[folge.findIndex((x) => x.id === k.id) + dir];
     if (n) load(n, dir);
   });
   function load(kiste, dir) {
@@ -447,10 +450,12 @@ async function showTitelbild(k0) {
     title.textContent = k.name ? `${k.nummer} · ${k.name}` : k.nummer;
     const t = turmOf(k);
     const list = t ? kistenImTurm(k.bereich, t.id) : [];
-    sub.hidden = list.length < 2;
-    if (list.length > 1) {
+    const tuerme = t ? tuermeIn(k.bereich) : [];
+    sub.hidden = !t || turmFolge(k.bereich).length < 2;
+    if (!sub.hidden) {
       const platz = list.findIndex((x) => x.id === k.id) + 1;
-      sub.textContent = `${platz}. von ${list.length} im Turm „${t.name}“ · ↕ wischen: Kiste darüber/darunter`;
+      const tNr = tuerme.length > 1 ? ` (Turm ${tuerme.findIndex((x) => x.id === t.id) + 1} von ${tuerme.length})` : '';
+      sub.textContent = `${platz}. von ${list.length} im Turm „${t.name}“${tNr} · ↕ wischen: Kiste darüber/darunter`;
     }
     g.setList(k.titelbild ? [{ id: '', thumb: k.titelbild }] : [], '', dir);
     unsub?.();
