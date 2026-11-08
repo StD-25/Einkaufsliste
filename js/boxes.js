@@ -105,19 +105,15 @@ function obenPos(bereichId, turmId) {
   return list.length ? Math.min(...list.map((k) => k.pos)) - 1 : 0;
 }
 
-// Kiste im Turm eine Stelle nach oben (-1) oder unten (+1); danach 0, 1, 2 … durchnummerieren
-function moveInTurm(k, dir) {
-  const t = turmOf(k);
-  if (!t) return;
-  const list = kistenImTurm(k.bereich, t.id);
-  const i = list.findIndex((x) => x.id === k.id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= list.length) return;
-  [list[i], list[j]] = [list[j], list[i]];
-  list.forEach((x, n) => { if (x.pos !== n) cols.kisten.update(x.id, { pos: n }).catch(fail); });
+// Neue Reihenfolge eines Turms speichern (ids von oben nach unten)
+function saveOrder(ids) {
+  ids.forEach((id, n) => {
+    const k = kisten.find((x) => x.id === id);
+    if (k && k.pos !== n) cols.kisten.update(id, { pos: n }).catch(fail);
+  });
 }
 
-// Turm als Stapel von oben nach unten: Platz, Bild (Tipp = groß), Nummer/Name (Tipp = Kiste), Pfeile
+// Turm als Stapel von oben nach unten: Platz, Bild (Tipp = groß), Nummer/Name (Tipp = Kiste)
 function turmStack(list) {
   if (!list.length) return el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Turm.');
   return el('div', { class: 'stack-wrap' },
@@ -126,11 +122,126 @@ function turmStack(list) {
       el('span', { class: 'stack-nr' }, String(i + 1)),
       thumbBtn(k),
       el('a', { class: 'stack-text', href: `#/kisten/kiste/${k.id}` },
-        el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null),
-      list.length > 1 ? el('span', { class: 'stack-move' },
-        el('button', { type: 'button', class: 'mv', disabled: i === 0, onclick: () => moveInTurm(k, -1), 'aria-label': `${k.nummer} nach oben` }, '▲'),
-        el('button', { type: 'button', class: 'mv', disabled: i === list.length - 1, onclick: () => moveInTurm(k, 1), 'aria-label': `${k.nummer} nach unten` }, '▼')) : null))),
+        el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null)))),
     list.length > 1 ? el('div', { class: 'stack-end' }, '▼ unten') : null);
+}
+
+// ---------- Einstellungen: Reihenfolge in den Türmen (lange drücken und schieben) ----------
+
+let dragging = false;     // während des Schiebens nicht neu aufbauen
+
+function sortableStack(list) {
+  const ol = el('ol', { class: 'turm-stack sortable' }, list.map((k, i) => el('li', { class: 'stack-row', 'data-id': k.id },
+    el('span', { class: 'stack-nr' }, String(i + 1)),
+    k.titelbild ? el('img', { class: 'thumb', src: k.titelbild, alt: '', draggable: 'false' }) : el('span', { class: 'thumb thumb-empty', 'aria-hidden': 'true' }, '📦'),
+    el('span', { class: 'stack-text' }, el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null),
+    el('span', { class: 'grip', 'aria-hidden': 'true' }, '≡'))));
+  if (list.length > 1) makeSortable(ol);
+  return el('div', { class: 'stack-wrap' },
+    list.length > 1 ? el('div', { class: 'stack-end' }, '▲ oben') : null,
+    ol,
+    list.length > 1 ? el('div', { class: 'stack-end' }, '▼ unten') : null);
+}
+
+// Lange drücken (0,45 s) hebt den Eintrag an, dann innerhalb der Liste schieben.
+// Bewegt sich der Finger vorher, ist es normales Scrollen.
+function makeSortable(ol) {
+  let row = null;
+  let timer = null;
+  let active = false;
+  let x0 = 0;
+  let y0 = 0;
+  const rows = () => [...ol.children];
+  const begin = (r, x, y) => {
+    cancel();
+    row = r; x0 = x; y0 = y;
+    timer = setTimeout(() => {
+      active = true;
+      dragging = true;
+      row.classList.add('dragging');
+      ol.classList.add('is-sorting');
+      navigator.vibrate?.(25);
+    }, 450);
+  };
+  const cancel = () => {
+    clearTimeout(timer);
+    if (row) row.classList.remove('dragging');
+    ol.classList.remove('is-sorting');
+    row = null; active = false; dragging = false;
+    removeEventListener('mousemove', onMouseMove);
+    removeEventListener('mouseup', end);
+  };
+  const onMouseMove = (e) => move(e.clientX, e.clientY, e);
+  const move = (x, y, e) => {
+    if (!row) return;
+    if (!active) { if (Math.hypot(x - x0, y - y0) > 8) cancel(); return; }
+    e.preventDefault();
+    for (const other of rows()) {
+      if (other === row) continue;
+      const r = other.getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      const otherIsAbove = other.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING;
+      if (otherIsAbove && y < mid) { ol.insertBefore(row, other); break; }
+      if (!otherIsAbove && y > mid) ol.insertBefore(row, other.nextSibling);
+    }
+    if (y < 70) scrollBy(0, -12);
+    else if (y > innerHeight - 70) scrollBy(0, 12);
+  };
+  const end = () => {
+    if (!row) return;
+    const wasActive = active;
+    cancel();
+    if (!wasActive) return;
+    rows().forEach((r, n) => { r.querySelector('.stack-nr').textContent = String(n + 1); });
+    saveOrder(rows().map((r) => r.dataset.id));
+  };
+  // Finger
+  ol.addEventListener('touchstart', (e) => {
+    const r = e.target.closest('.stack-row');
+    if (r && e.touches.length === 1) begin(r, e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  ol.addEventListener('touchmove', (e) => move(e.touches[0].clientX, e.touches[0].clientY, e), { passive: false });
+  ol.addEventListener('touchend', end);
+  ol.addEventListener('touchcancel', cancel);
+  ol.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Maus
+  ol.addEventListener('mousedown', (e) => {
+    const r = e.target.closest('.stack-row');
+    if (r && e.button === 0) {
+      e.preventDefault();
+      begin(r, e.clientX, e.clientY);
+      addEventListener('mousemove', onMouseMove);
+      addEventListener('mouseup', end);
+    }
+  });
+}
+
+export function towerSettingsCard() {
+  const body = el('div', { class: 'stack' });
+  const node = el('section', { class: 'card' },
+    el('h2', {}, 'Türme: Reihenfolge der Kisten'),
+    el('p', {}, 'Eintrag lange gedrückt halten, bis er sich anhebt, dann an die richtige Stelle schieben. Oben steht die oberste Kiste.'),
+    body);
+  const update = () => {
+    if (dragging) return;
+    if (!boxesReady()) { body.replaceChildren(el('p', { class: 'muted small' }, 'Wird geladen …')); return; }
+    const parts = [];
+    for (const b of [...bereiche].sort(byName)) {
+      const tuerme = tuermeIn(b.id);
+      if (!tuerme.length) continue;
+      parts.push(el('h3', { class: 'subhead' }, b.name));
+      for (const t of tuerme) {
+        const list = kistenImTurm(b.id, t.id);
+        parts.push(el('div', { class: 'turm' },
+          el('strong', {}, `Turm „${t.name}“`, el('span', { class: 'muted small' }, list.length === 1 ? ' · 1 Kiste' : ` · ${list.length} Kisten`)),
+          list.length ? sortableStack(list) : el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Turm.')));
+      }
+    }
+    body.replaceChildren(...(parts.length ? parts
+      : [el('p', { class: 'muted small' }, 'Noch keine Türme. Türme legt ihr im Reiter Kisten im jeweiligen Bereich an.')]));
+  };
+  update();
+  return { node, update };
 }
 
 // Kistennummern als Knöpfe, ein Tipp öffnet die Kiste
@@ -259,36 +370,40 @@ function thumbBtn(k) {
 }
 
 // Große Bildansicht mit Wischen (links/rechts) und ‹ › für mehrere Fotos.
-// list: [{ id, voll, thumb }]; onChange(foto) bei jedem Wechsel.
-function gallery(list, start, onChange) {
+// list: [{ id, voll, thumb }]; onChange(foto) bei jedem Wechsel;
+// onVertical(+1 = Kiste darunter, -1 = Kiste darüber) beim Wischen nach oben/unten.
+function gallery(list, start, onChange, onVertical) {
   let items = list;
   let i = Math.max(0, Math.min(start, list.length - 1));
   const img = el('img', { class: 'photo-big', alt: 'Foto', draggable: 'false' });
+  const none = el('div', { class: 'photo-none' }, el('span', { class: 'big' }, '📦'), 'Kein Foto');
   const count = el('span', { class: 'gal-count' });
   const go = (d) => { if (items.length < 2) return; i = (i + d + items.length) % items.length; show(); };
   const prev = el('button', { type: 'button', class: 'gal-nav gal-prev', 'aria-label': 'Vorheriges Foto', onclick: () => go(-1) }, '‹');
   const next = el('button', { type: 'button', class: 'gal-nav gal-next', 'aria-label': 'Nächstes Foto', onclick: () => go(1) }, '›');
-  const node = el('div', { class: 'gal' }, img, prev, next, count);
+  const node = el('div', { class: `gal${onVertical ? ' gal-v' : ''}` }, img, none, prev, next, count);
   function show() {
     const b = items[i];
-    if (!b) return;
-    img.src = b.voll || b.thumb;
+    img.hidden = !b;
+    none.hidden = !!b;
+    if (b) img.src = b.voll || b.thumb;
     const many = items.length > 1;
     prev.hidden = !many; next.hidden = !many; count.hidden = !many;
     count.textContent = `${i + 1} / ${items.length}`;
-    onChange?.(b);
+    if (b) onChange?.(b);
   }
   // Wischen: waagerecht mindestens 40 px und mehr als senkrecht
   let x0 = null;
   let y0 = 0;
-  img.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; });
-  img.addEventListener('pointercancel', () => { x0 = null; });
-  img.addEventListener('pointerup', (e) => {
+  node.addEventListener('pointerdown', (e) => { if (e.target.closest('.gal-nav')) return; x0 = e.clientX; y0 = e.clientY; });
+  node.addEventListener('pointercancel', () => { x0 = null; });
+  node.addEventListener('pointerup', (e) => {
     if (x0 === null) return;
     const dx = e.clientX - x0;
     const dy = e.clientY - y0;
     x0 = null;
     if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
+    else if (onVertical && Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) onVertical(dy < 0 ? 1 : -1);
   });
   node.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') go(-1);
@@ -298,29 +413,62 @@ function gallery(list, start, onChange) {
   return {
     node,
     current: () => items[i],
-    setList(l, id) {
-      if (!l.length) return;
+    setList(l, id, slide) {
       items = l;
+      if (slide) {
+        node.classList.remove('slide-up', 'slide-down');
+        void node.offsetWidth;
+        node.classList.add(slide > 0 ? 'slide-up' : 'slide-down');
+      }
       const j = l.findIndex((x) => x.id === id);
-      i = j >= 0 ? j : Math.min(i, l.length - 1);
+      i = j >= 0 ? j : Math.max(0, Math.min(i, l.length - 1));
       show();
     },
   };
 }
 
-// Titelbild groß: sofort die Vorschau, dann alle Fotos der Kiste nachladen (wischen).
-async function showTitelbild(k) {
-  const g = gallery([{ id: '', thumb: k.titelbild }], 0);
-  let first = true;
-  const unsub = ctx.store.collection('bilder', { where: ['kiste', k.id] }).subscribe((d) => {
-    if (!d.length) return;
-    const list = d.sort((a, b) => (a.erstelltAm || 0) - (b.erstelltAm || 0));
-    const keep = first ? (list.find((x) => x.thumb === k.titelbild) || list[0]).id : g.current()?.id;
-    first = false;
-    g.setList(list, keep);
-  }, () => {});
+// Titelbild groß: sofort die Vorschau, dann alle Fotos der Kiste nachladen.
+// Links/rechts: Fotos dieser Kiste. Steht die Kiste in einem Turm: nach oben wischen = Kiste darunter,
+// nach unten wischen = Kiste darüber.
+async function showTitelbild(k0) {
+  let k = k0;
+  let unsub = null;
+  const title = el('h2', {});
+  const sub = el('p', { class: 'muted small gal-sub' });
+  const g = gallery([], 0, null, (dir) => {
+    const t = turmOf(k);
+    if (!t) return;
+    const list = kistenImTurm(k.bereich, t.id);
+    const n = list[list.findIndex((x) => x.id === k.id) + dir];
+    if (n) load(n, dir);
+  });
+  function load(kiste, dir) {
+    k = kiste;
+    title.textContent = k.name ? `${k.nummer} · ${k.name}` : k.nummer;
+    const t = turmOf(k);
+    const list = t ? kistenImTurm(k.bereich, t.id) : [];
+    sub.hidden = list.length < 2;
+    if (list.length > 1) {
+      const platz = list.findIndex((x) => x.id === k.id) + 1;
+      sub.textContent = `${platz}. von ${list.length} im Turm „${t.name}“ · ↕ wischen: Kiste darüber/darunter`;
+    }
+    g.setList(k.titelbild ? [{ id: '', thumb: k.titelbild }] : [], '', dir);
+    unsub?.();
+    let first = true;
+    const id = k.id;
+    const titel = k.titelbild;
+    unsub = ctx.store.collection('bilder', { where: ['kiste', id] }).subscribe((d) => {
+      if (!d.length || k.id !== id) return;
+      const fotos = d.sort((a, b) => (a.erstelltAm || 0) - (b.erstelltAm || 0));
+      const keep = first ? (fotos.find((x) => x.thumb === titel) || fotos[0]).id : g.current()?.id;
+      first = false;
+      g.setList(fotos, keep);
+    }, () => {});
+  }
+  load(k0);
   const res = await dialog((f) => f.append(
-    el('h2', {}, k.name ? `${k.nummer} · ${k.name}` : k.nummer),
+    title,
+    sub,
     g.node,
     el('div', { class: 'row' },
       el('button', { class: 'btn secondary', value: 'open' }, 'Kiste öffnen'),

@@ -1,7 +1,7 @@
 import { createStore, isDemo, newCode, isValidCode } from './store.js';
 import { $, el, dialog, toast, fail, confirmDelete, fmtDate } from './ui.js';
 import { initFreezer, viewFreezer, alerts, badgeCount, fachSettingsCard, freezerReady } from './freezer.js';
-import { initBoxes, viewBoxes, boxesReady, resetBoxView } from './boxes.js';
+import { initBoxes, viewBoxes, boxesReady, resetBoxView, towerSettingsCard } from './boxes.js';
 
 const NAME_KEY = 'einkaufsliste-name';
 const CODE_KEY = 'einkaufsliste-code';
@@ -206,7 +206,8 @@ async function copyInvite(field, btn) {
 }
 
 function viewSettings() {
-  renderList = () => {};
+  const towers = towerSettingsCard();
+  renderList = () => towers.update();
   const nameLine = el('strong', {}, getName() || '–');
   const link = el('input', { type: 'text', id: 'invite-link', value: inviteLink(), readonly: true, 'aria-label': 'Einladungslink', onfocus: (e) => e.target.select() });
   const copyBtn = el('button', { class: 'btn', type: 'button', onclick: () => copyInvite(link, copyBtn) }, 'Link kopieren');
@@ -226,6 +227,7 @@ function viewSettings() {
       link,
       el('div', { class: 'row-buttons' }, copyBtn, shareBtn)),
     freezerReady() ? fachSettingsCard() : null,
+    towers.node,
     el('section', { class: 'card' },
       el('h2', {}, 'App aufs Handy holen'),
       el('p', {}, 'Android (Chrome): Menü ⋮ → „App installieren“.'),
