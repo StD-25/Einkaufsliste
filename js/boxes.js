@@ -133,7 +133,7 @@ let dragging = false;     // während des Schiebens nicht neu aufbauen
 function sortableStack(list) {
   const ol = el('ol', { class: 'turm-stack sortable' }, list.map((k, i) => el('li', { class: 'stack-row', 'data-id': k.id },
     el('span', { class: 'stack-nr' }, String(i + 1)),
-    k.titelbild ? el('img', { class: 'thumb', src: k.titelbild, alt: '', draggable: 'false' }) : el('span', { class: 'thumb thumb-empty', 'aria-hidden': 'true' }, '📦'),
+    k.titelbild ? upright(el('img', { class: 'thumb', src: k.titelbild, alt: '', draggable: 'false' })) : el('span', { class: 'thumb thumb-empty', 'aria-hidden': 'true' }, '📦'),
     el('span', { class: 'stack-text' }, el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null),
     el('span', { class: 'grip', 'aria-hidden': 'true' }, '≡'))));
   if (list.length > 1) makeSortable(ol);
@@ -366,7 +366,7 @@ function thumbBtn(k) {
     return el('a', { class: 'thumb thumb-empty', href: `#/kisten/kiste/${k.id}`, 'aria-label': `Kiste ${k.nummer} öffnen` }, '📦');
   }
   return el('button', { type: 'button', class: 'thumb-btn', onclick: () => showTitelbild(k), 'aria-label': `Bild von Kiste ${k.nummer} groß anzeigen` },
-    el('img', { class: 'thumb', src: k.titelbild, alt: '', loading: 'lazy' }));
+    upright(el('img', { class: 'thumb', src: k.titelbild, alt: '', loading: 'lazy' })));
 }
 
 // Große Bildansicht mit Wischen (links/rechts) und ‹ › für mehrere Fotos.
@@ -375,7 +375,7 @@ function thumbBtn(k) {
 function gallery(list, start, onChange, onVertical) {
   let items = list;
   let i = Math.max(0, Math.min(start, list.length - 1));
-  const img = el('img', { class: 'photo-big', alt: 'Foto', draggable: 'false' });
+  const img = upright(el('img', { class: 'photo-big', alt: 'Foto', draggable: 'false' }));
   const none = el('div', { class: 'photo-none' }, el('span', { class: 'big' }, '📦'), 'Kein Foto');
   const count = el('span', { class: 'gal-count' });
   const go = (d) => { if (items.length < 2) return; i = (i + d + items.length) % items.length; show(); };
@@ -756,7 +756,7 @@ function viewKiste(id) {
       k.notiz ? el('p', { class: 'note' }, k.notiz) : null);
 
     const tiles = bilder.map((b) => el('button', { type: 'button', class: 'photo', onclick: () => showPhoto(k, b), 'aria-label': 'Foto groß anzeigen' },
-      el('img', { src: b.thumb, alt: '', loading: 'lazy' })));
+      upright(el('img', { src: b.thumb, alt: '', loading: 'lazy' }))));
     const voll = bilder.length >= MAX_BILDER;
     photos.replaceChildren(...tiles,
       voll ? null : el('label', { class: 'photo photo-add', for: 'k-kamera' }, el('span', { class: 'ico' }, '📷'), el('span', {}, 'Foto machen')),
@@ -895,18 +895,46 @@ async function loadImage(file) {
   }
 }
 
+// Verkleinern; Querformat wird um 90° im Uhrzeigersinn gedreht, damit jedes Foto hochkant ist.
 function toJpeg(img, maxSide, quality) {
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
   const s = Math.min(1, maxSide / Math.max(w, h));
+  const dw = Math.max(1, Math.round(w * s));
+  const dh = Math.max(1, Math.round(h * s));
+  const quer = w > h;
   const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(w * s));
-  c.height = Math.max(1, Math.round(h * s));
+  c.width = quer ? dh : dw;
+  c.height = quer ? dw : dh;
   const g = c.getContext('2d');
   g.fillStyle = '#fff';
   g.fillRect(0, 0, c.width, c.height);
-  g.drawImage(img, 0, 0, c.width, c.height);
+  if (quer) { g.translate(c.width, 0); g.rotate(Math.PI / 2); }
+  g.drawImage(img, 0, 0, dw, dh);
   return c.toDataURL('image/jpeg', quality);
+}
+
+// Beim Anzeigen: bereits gespeicherte Querformat-Fotos hochkant drehen (nur auf dem Gerät).
+const drehCache = new Map();
+function upright(img) {
+  img.addEventListener('load', () => {
+    if (img.naturalWidth <= img.naturalHeight) return;
+    const src = img.src;
+    let out = drehCache.get(src);
+    if (!out) {
+      const c = document.createElement('canvas');
+      c.width = img.naturalHeight;
+      c.height = img.naturalWidth;
+      const g = c.getContext('2d');
+      g.translate(c.width, 0);
+      g.rotate(Math.PI / 2);
+      g.drawImage(img, 0, 0);
+      out = c.toDataURL('image/jpeg', 0.85);
+      drehCache.set(src, out);
+    }
+    img.src = out;
+  });
+  return img;
 }
 
 // Foto auf höchstens ca. 250 KB verkleinern, dazu ein kleines Vorschaubild.
