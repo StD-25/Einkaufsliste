@@ -71,12 +71,19 @@ export function fail(e) {
 }
 
 // Dialog mit Formular; resolve(Wert des gedrückten Knopfs) oder null bei Abbruch.
-export function dialog(build, { required = false } = {}) {
+// focus: false = kein Eingabefeld vorbelegen (am Handy springt sonst die Tastatur auf)
+export function dialog(build, { required = false, focus = true } = {}) {
   const dlg = $('#dlg');
   dlg.replaceChildren();
   return new Promise((resolve) => {
     const form = el('form', { method: 'dialog' });
     build(form);
+    if (!focus) {
+      form.querySelectorAll('[autofocus]').forEach((x) => x.removeAttribute('autofocus'));
+      const ziel = form.querySelector('h2') || form;
+      ziel.setAttribute('tabindex', '-1');
+      ziel.setAttribute('autofocus', '');
+    }
     dlg.append(form);
     // Sofort auf den gedrückten Knopf reagieren (das close-Ereignis kommt je nach Browser verzögert).
     let finished = false;

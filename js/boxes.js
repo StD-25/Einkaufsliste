@@ -284,7 +284,7 @@ async function addToTurm(b, t) {
     el('div', { class: 'row' },
       el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
       kandidaten.length ? el('button', { class: 'btn', value: 'ok' }, 'Hinzufügen') : null),
-  ));
+  ), { focus: false });
   if (res !== 'ok') return;
   const ids = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
   const top = obenPos(b.id, t.id);
@@ -306,7 +306,7 @@ async function editTurm(b, turm) {
   const isNew = !turm;
   const alle = kistenIn(b.id);
   const drin = new Set(isNew ? [] : kistenImTurm(b.id, turm.id).map((k) => k.id));
-  const name = el('input', { type: 'text', id: 't-name', value: turm?.name || '', placeholder: 'z. B. G05 (oberste Kiste)', maxlength: 30, required: true, autofocus: true });
+  const name = el('input', { type: 'text', id: 't-name', value: turm?.name || '', placeholder: 'z. B. G05 (oberste Kiste)', maxlength: 30, required: true });
   const suggest = el('div', { class: 'num-chips' });
   // Erst die Kisten dieses Turms von oben nach unten, dann die übrigen des Bereichs
   const imTurm = isNew ? [] : kistenImTurm(b.id, turm.id);
@@ -354,7 +354,7 @@ async function editTurm(b, turm) {
       el('span', { class: 'spacer' }),
       el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
       el('button', { class: 'btn', value: 'save' }, 'Speichern')),
-  ));
+  ), { focus: false });
   const tuerme = [...(bereiche.find((x) => x.id === b.id)?.tuerme || [])];
   if (res === 'delete' && turm) {
     const betroffen = kistenImTurm(b.id, turm.id);
@@ -672,7 +672,7 @@ async function editBereich(b) {
       el('span', { class: 'spacer' }),
       el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
       el('button', { class: 'btn', value: 'save' }, 'Speichern')),
-  ));
+  ), { focus: false });
   if (res === 'delete' && b && !kistenIn(b.id).length) {
     if (await confirmDelete(`Bereich „${b.name}“ löschen?`, 'Der leere Bereich wird für alle entfernt.')) {
       cols.bereiche.remove(b.id).catch(fail);
@@ -843,7 +843,7 @@ async function editKiste(k) {
       el('span', { class: 'spacer' }),
       el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
       el('button', { class: 'btn', value: 'save' }, 'Speichern')),
-  ));
+  ), { focus: false });
   if (res === 'delete') {
     const n = k.inhalt?.length || 0;
     if (await confirmDelete(`Kiste ${k.nummer} löschen?`, `Die Kiste wird mit ${n} Einträgen und ${bilder.length} Fotos für alle gelöscht.`)) {
@@ -882,7 +882,7 @@ async function editLine(kisteId, idx) {
       el('span', { class: 'spacer' }),
       el('button', { class: 'btn secondary', value: '', formnovalidate: true }, 'Abbrechen'),
       el('button', { class: 'btn', value: 'save' }, 'Speichern')),
-  ));
+  ), { focus: false });
   // Aktuellen Stand neu holen: jemand anderes könnte die Liste inzwischen geändert haben.
   const now = kisten.find((x) => x.id === kisteId);
   const list = [...(now?.inhalt || [])];
