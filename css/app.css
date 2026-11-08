@@ -581,3 +581,7 @@ a.thumb-empty { color: inherit; text-decoration: none; }
 .pick-row .stack-nr { width: 18px; }
 .check-sep { font-size: 0.8rem; color: var(--muted); font-weight: 600; padding: 10px 2px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
 .check-list .stack-end { padding-top: 4px; }
+
+/* Turm bearbeiten: ziehbare Zeilen */
+.check-list .turm-stack { gap: 4px; }
+.check-list .pick-row.stack-row { padding: 6px; }

@@ -145,7 +145,7 @@ function sortableStack(list) {
 
 // Lange drücken (0,45 s) hebt den Eintrag an, dann innerhalb der Liste schieben.
 // Bewegt sich der Finger vorher, ist es normales Scrollen.
-function makeSortable(ol) {
+function makeSortable(ol, onDrop = saveOrder) {
   let row = null;
   let timer = null;
   let active = false;
@@ -184,8 +184,10 @@ function makeSortable(ol) {
       if (otherIsAbove && y < mid) { ol.insertBefore(row, other); break; }
       if (!otherIsAbove && y > mid) ol.insertBefore(row, other.nextSibling);
     }
-    if (y < 70) scrollBy(0, -12);
-    else if (y > innerHeight - 70) scrollBy(0, 12);
+    const sc = ol.closest('.check-list');
+    const box = sc ? sc.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+    const step = y < box.top + 50 ? -12 : y > box.bottom - 50 ? 12 : 0;
+    if (step) { if (sc) sc.scrollTop += step; else scrollBy(0, step); }
   };
   const end = () => {
     if (!row) return;
@@ -193,7 +195,11 @@ function makeSortable(ol) {
     cancel();
     if (!wasActive) return;
     rows().forEach((r, n) => { r.querySelector('.stack-nr').textContent = String(n + 1); });
-    saveOrder(rows().map((r) => r.dataset.id));
+    // Der Klick nach dem Loslassen soll kein Häkchen umschalten
+    const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+    ol.addEventListener('click', stop, true);
+    setTimeout(() => ol.removeEventListener('click', stop, true), 50);
+    onDrop(rows().map((r) => r.dataset.id));
   };
   // Finger
   ol.addEventListener('touchstart', (e) => {
@@ -309,7 +315,7 @@ async function editTurm(b, turm) {
     const other = turmOf(k);
     const cb = el('input', { type: 'checkbox', value: k.id, checked: drin.has(k.id) });
     cb.addEventListener('change', renderSuggest);
-    return el('label', { class: 'check-row pick-row' }, cb,
+    return el('label', { class: `check-row pick-row${platz ? ' stack-row' : ''}`, 'data-id': k.id }, cb,
       platz ? el('span', { class: 'stack-nr' }, String(platz)) : null,
       k.titelbild ? upright(el('img', { class: 'thumb', src: k.titelbild, alt: '' })) : el('span', { class: 'thumb thumb-empty', 'aria-hidden': 'true' }, '📦'),
       el('span', { class: 'stack-text' }, el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null,
@@ -317,10 +323,14 @@ async function editTurm(b, turm) {
   };
   const rowsTurm = imTurm.map((k, i) => row(k, i + 1));
   const rowsRest = uebrige.map((k) => row(k, 0));
-  const boxes = [...rowsTurm, ...rowsRest];
+  const stapel = el('div', { class: 'turm-stack sortable' }, rowsTurm);
+  if (rowsTurm.length > 1) makeSortable(stapel, () => renderSuggest());
+  // Endgültiger Turm von oben nach unten: neu angehakte oben drauf, dann der (umsortierte) Stapel
+  const auswahl = () => [...rowsRest, ...stapel.children]
+    .map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
   function renderSuggest() {
     // in Stapel-Reihenfolge, die oberste Kiste zuerst
-    const list = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => alle.find((k) => k.id === c.value));
+    const list = auswahl().map((kid) => alle.find((k) => k.id === kid));
     suggest.replaceChildren(...list.map((k) => el('button', {
       type: 'button', class: 'num', onclick: () => { name.value = k.nummer; name.focus(); },
     }, k.nummer)));
@@ -334,11 +344,11 @@ async function editTurm(b, turm) {
     el('h3', { class: 'subhead' }, 'Kisten in diesem Turm'),
     alle.length ? el('div', { class: 'check-list' },
       rowsTurm.length ? el('div', { class: 'stack-end' }, '▲ oben') : null,
-      rowsTurm,
+      rowsTurm.length ? stapel : null,
       rowsTurm.length ? el('div', { class: 'stack-end' }, '▼ unten') : null,
       rowsRest.length ? el('div', { class: 'check-sep' }, rowsTurm.length ? 'Weitere Kisten (Häkchen = in diesen Turm, kommt oben drauf)' : 'Häkchen setzen = in diesen Turm') : null,
       rowsRest) : el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Bereich.'),
-    rowsTurm.length > 1 ? el('p', { class: 'muted small' }, 'Die Reihenfolge ändert ihr unter Einstellungen → Türme.') : null,
+    rowsTurm.length > 1 ? el('p', { class: 'muted small' }, 'Reihenfolge ändern: Kiste lange gedrückt halten, bis sie sich anhebt, dann an die richtige Stelle ziehen.') : null,
     el('div', { class: 'row' },
       isNew ? null : el('button', { class: 'btn danger', value: 'delete', formnovalidate: true }, 'Löschen'),
       el('span', { class: 'spacer' }),
@@ -361,12 +371,12 @@ async function editTurm(b, turm) {
   const data = { id, name: name.value.trim() };
   const next = isNew ? [...tuerme, data] : tuerme.map((t) => (t.id === id ? data : t));
   cols.bereiche.update(b.id, { tuerme: next }).catch(fail);
-  const gewaehlt = new Set(boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value));
-  let top = isNew ? 0 : obenPos(b.id, id);
+  const folge = auswahl();
   for (const k of alle) {
     const jetzt = turmOf(k)?.id || '';
-    if (gewaehlt.has(k.id) && jetzt !== id) cols.kisten.update(k.id, { turm: id, pos: --top }).catch(fail);
-    else if (!gewaehlt.has(k.id) && jetzt === id) cols.kisten.update(k.id, { turm: '' }).catch(fail);
+    const n = folge.indexOf(k.id);
+    if (n >= 0 && (jetzt !== id || k.pos !== n)) cols.kisten.update(k.id, { turm: id, pos: n }).catch(fail);
+    else if (n < 0 && jetzt === id) cols.kisten.update(k.id, { turm: '' }).catch(fail);
   }
 }
 
