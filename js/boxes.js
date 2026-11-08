@@ -302,17 +302,25 @@ async function editTurm(b, turm) {
   const drin = new Set(isNew ? [] : kistenImTurm(b.id, turm.id).map((k) => k.id));
   const name = el('input', { type: 'text', id: 't-name', value: turm?.name || '', placeholder: 'z. B. G05 (oberste Kiste)', maxlength: 30, required: true, autofocus: true });
   const suggest = el('div', { class: 'num-chips' });
-  const boxes = alle.map((k) => {
+  // Erst die Kisten dieses Turms von oben nach unten, dann die übrigen des Bereichs
+  const imTurm = isNew ? [] : kistenImTurm(b.id, turm.id);
+  const uebrige = alle.filter((k) => !drin.has(k.id));
+  const row = (k, platz) => {
     const other = turmOf(k);
     const cb = el('input', { type: 'checkbox', value: k.id, checked: drin.has(k.id) });
     cb.addEventListener('change', renderSuggest);
-    return el('label', { class: 'check-row' }, cb,
-      el('span', {}, el('strong', {}, k.nummer), k.name ? ` ${k.name}` : ''),
-      other && other.id !== turm?.id ? el('span', { class: 'muted small' }, ` (jetzt in ${other.name})`) : null);
-  });
+    return el('label', { class: 'check-row pick-row' }, cb,
+      platz ? el('span', { class: 'stack-nr' }, String(platz)) : null,
+      k.titelbild ? upright(el('img', { class: 'thumb', src: k.titelbild, alt: '' })) : el('span', { class: 'thumb thumb-empty', 'aria-hidden': 'true' }, '📦'),
+      el('span', { class: 'stack-text' }, el('strong', {}, k.nummer), k.name ? el('span', { class: 'muted small' }, k.name) : null,
+        other && other.id !== turm?.id ? el('span', { class: 'muted small' }, `jetzt in ${other.name}`) : null));
+  };
+  const rowsTurm = imTurm.map((k, i) => row(k, i + 1));
+  const rowsRest = uebrige.map((k) => row(k, 0));
+  const boxes = [...rowsTurm, ...rowsRest];
   function renderSuggest() {
-    const ids = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
-    const list = alle.filter((k) => ids.includes(k.id));
+    // in Stapel-Reihenfolge, die oberste Kiste zuerst
+    const list = boxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => alle.find((k) => k.id === c.value));
     suggest.replaceChildren(...list.map((k) => el('button', {
       type: 'button', class: 'num', onclick: () => { name.value = k.nummer; name.focus(); },
     }, k.nummer)));
@@ -324,7 +332,13 @@ async function editTurm(b, turm) {
     el('label', { for: 't-name' }, 'Name des Turms'), name,
     el('p', { class: 'muted small' }, 'Antippen übernimmt die Nummer als Namen (z. B. die oberste Kiste):'), suggest,
     el('h3', { class: 'subhead' }, 'Kisten in diesem Turm'),
-    alle.length ? el('div', { class: 'check-list' }, boxes) : el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Bereich.'),
+    alle.length ? el('div', { class: 'check-list' },
+      rowsTurm.length ? el('div', { class: 'stack-end' }, '▲ oben') : null,
+      rowsTurm,
+      rowsTurm.length ? el('div', { class: 'stack-end' }, '▼ unten') : null,
+      rowsRest.length ? el('div', { class: 'check-sep' }, rowsTurm.length ? 'Weitere Kisten (Häkchen = in diesen Turm, kommt oben drauf)' : 'Häkchen setzen = in diesen Turm') : null,
+      rowsRest) : el('p', { class: 'muted small' }, 'Noch keine Kisten in diesem Bereich.'),
+    rowsTurm.length > 1 ? el('p', { class: 'muted small' }, 'Die Reihenfolge ändert ihr unter Einstellungen → Türme.') : null,
     el('div', { class: 'row' },
       isNew ? null : el('button', { class: 'btn danger', value: 'delete', formnovalidate: true }, 'Löschen'),
       el('span', { class: 'spacer' }),

@@ -574,3 +574,10 @@ a.thumb-empty { color: inherit; text-decoration: none; }
 .thumb { width: 48px; height: 64px; }
 .stack-row .thumb, .sortable .stack-row .thumb { width: 42px; height: 56px; }
 .photo { aspect-ratio: 3 / 4; }
+
+/* Turm bearbeiten: Auswahl mit Bild */
+.pick-row { gap: 8px; padding: 6px 2px; }
+.pick-row .thumb { width: 36px; height: 48px; }
+.pick-row .stack-nr { width: 18px; }
+.check-sep { font-size: 0.8rem; color: var(--muted); font-weight: 600; padding: 10px 2px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
+.check-list .stack-end { padding-top: 4px; }
